@@ -607,7 +607,7 @@ class MrpBomAvailabilityWizardLine(models.TransientModel):
         digits="Product Unit of Measure",
     )
     is_bottleneck = fields.Boolean(
-        string="Bottleneck",
+        string="Is Bottleneck",
     )
     bottleneck_note = fields.Char(
         string="Bottleneck",
