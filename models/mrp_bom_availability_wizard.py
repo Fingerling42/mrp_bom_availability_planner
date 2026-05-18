@@ -4,6 +4,14 @@ from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 
 
+LINE_TYPE_COMPONENT = "component"
+LINE_TYPE_SUBASSEMBLY = "subassembly"
+
+STATE_OK = "ok"
+STATE_SHORTAGE = "shortage"
+STATE_ZERO = "zero"
+
+
 class MrpBomAvailabilityWizard(models.TransientModel):
     _name = "mrp.bom.availability.wizard"
     _description = "BoM Availability Planner"
@@ -100,10 +108,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
     def _onchange_product_id(self):
         for wizard in self:
             wizard.line_ids = [(5, 0, 0)]
-            wizard.can_produce_qty = 0.0
-            wizard.bottleneck_product_id = False
-            wizard.bottleneck_qty = 0.0
-            wizard.summary = False
+            wizard.update(wizard._reset_result_values())
             wizard.bom_id = (
                 wizard._get_matching_bom(wizard.product_id)
                 if wizard.product_id
@@ -113,15 +118,21 @@ class MrpBomAvailabilityWizard(models.TransientModel):
     def action_clear_lines(self):
         self.ensure_one()
         self.line_ids.unlink()
-        self.write(
-            {
-                "can_produce_qty": 0.0,
-                "bottleneck_product_id": False,
-                "bottleneck_qty": 0.0,
-                "summary": False,
-            }
-        )
+        self.write(self._reset_result_values())
         return self._reopen_wizard()
+
+    def _reset_result_values(self):
+        return {
+            "can_produce_qty": 0.0,
+            "bottleneck_product_id": False,
+            "bottleneck_qty": 0.0,
+            "summary": False,
+        }
+
+    def _empty_result_values(self, summary):
+        values = self._reset_result_values()
+        values["summary"] = summary
+        return values
 
     def action_compute_availability(self):
         self.ensure_one()
@@ -276,15 +287,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         bom_model = self.env["mrp.bom"]
         try:
             found = bom_model._bom_find(products=product)
-            if isinstance(found, dict):
-                bom = found.get(product) or found.get(product.id)
-                if not bom:
-                    for found_product, found_bom in found.items():
-                        if getattr(found_product, "id", found_product) == product.id:
-                            bom = found_bom
-                            break
-            else:
-                bom = found
+            bom = self._extract_bom_find_result(found, product)
             if bom:
                 return bom[:1]
         except TypeError:
@@ -313,6 +316,19 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             order="sequence, id",
             limit=1,
         )
+
+    def _extract_bom_find_result(self, found, product):
+        if not isinstance(found, dict):
+            return found
+
+        bom = found.get(product) or found.get(product.id)
+        if bom:
+            return bom
+
+        for found_product, found_bom in found.items():
+            if getattr(found_product, "id", found_product) == product.id:
+                return found_bom
+        return self.env["mrp.bom"]
 
     def _is_bom_line_applicable(self, bom_line, product):
         required_values = bom_line.bom_product_template_attribute_value_ids
@@ -370,12 +386,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         self.ensure_one()
         structure_lines = structure_lines or []
         if not aggregated_requirements and not structure_lines:
-            return [], {
-                "can_produce_qty": 0.0,
-                "bottleneck_product_id": False,
-                "bottleneck_qty": 0.0,
-                "summary": _("No BoM components found."),
-            }
+            return [], self._empty_result_values(_("No BoM components found."))
 
         product_ids = set(aggregated_requirements.keys())
         product_ids.update(line["product"].id for line in structure_lines)
@@ -404,7 +415,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
                     product,
                     structure_line["required_qty"],
                     structure_line["route_note"],
-                    "subassembly",
+                    LINE_TYPE_SUBASSEMBLY,
                     available_qty_by_product,
                     location_note_by_product,
                 )
@@ -435,7 +446,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
                 product,
                 required_qty_per_unit,
                 route_note,
-                "component",
+                LINE_TYPE_COMPONENT,
                 available_qty_by_product,
                 location_note_by_product,
             )
@@ -443,17 +454,12 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             component_lines.append(component_line)
 
         if not component_lines:
-            return [], {
-                "can_produce_qty": 0.0,
-                "bottleneck_product_id": False,
-                "bottleneck_qty": 0.0,
-                "summary": _("No BoM components found."),
-            }
+            return [], self._empty_result_values(_("No BoM components found."))
 
         prepared_lines.sort(
             key=lambda line: (
                 line["route_note"] or "",
-                0 if line["line_type"] == "subassembly" else 1,
+                0 if line["line_type"] == LINE_TYPE_SUBASSEMBLY else 1,
                 line["product_id"],
             )
         )
@@ -478,7 +484,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         )
         shortage_count = sum(1 for line in component_lines if line["shortage_qty"] > 0)
         zero_count = sum(
-            1 for line in component_lines if line["availability_state"] == "zero"
+            1 for line in component_lines if line["availability_state"] == STATE_ZERO
         )
         summary = _(
             "%(qty)s unit(s) from %(location_count)s location(s). "
@@ -519,11 +525,11 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         )
         shortage_qty = max(required_qty_for_target - available_qty, 0.0)
         if available_qty <= 0:
-            availability_state = "zero"
+            availability_state = STATE_ZERO
         elif shortage_qty > 0:
-            availability_state = "shortage"
+            availability_state = STATE_SHORTAGE
         else:
-            availability_state = "ok"
+            availability_state = STATE_OK
 
         return {
             "sequence": sequence,
@@ -556,11 +562,11 @@ class MrpBomAvailabilityWizardLine(models.TransientModel):
     sequence = fields.Integer(default=10)
     line_type = fields.Selection(
         selection=[
-            ("component", "Component"),
-            ("subassembly", "Subassembly"),
+            (LINE_TYPE_COMPONENT, "Component"),
+            (LINE_TYPE_SUBASSEMBLY, "Subassembly"),
         ],
         string="Type",
-        default="component",
+        default=LINE_TYPE_COMPONENT,
         readonly=True,
     )
     level = fields.Integer(
@@ -609,9 +615,9 @@ class MrpBomAvailabilityWizardLine(models.TransientModel):
     )
     availability_state = fields.Selection(
         selection=[
-            ("ok", "Enough"),
-            ("shortage", "Shortage"),
-            ("zero", "Zero Available"),
+            (STATE_OK, "Enough"),
+            (STATE_SHORTAGE, "Shortage"),
+            (STATE_ZERO, "Zero Available"),
         ],
         string="State",
     )
