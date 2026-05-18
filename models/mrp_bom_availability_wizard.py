@@ -84,6 +84,11 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         string="Summary",
         readonly=True,
     )
+    availability_overview_html = fields.Html(
+        string="Availability Overview",
+        readonly=True,
+        sanitize=False,
+    )
 
     @api.model
     def _default_location_ids(self):
@@ -136,8 +141,6 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             raise UserError(_("Select a Product Variant."))
         if not self.bom_id:
             raise UserError(_("Select a Bill of Materials."))
-        if self.target_qty <= 0:
-            raise UserError(_("Target Quantity must be greater than zero."))
         if not self.location_ids:
             raise UserError(_("Select at least one Location."))
 
@@ -147,6 +150,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             "bottleneck_product_id": False,
             "bottleneck_qty": 0.0,
             "summary": False,
+            "availability_overview_html": False,
         }
 
     def _empty_result_values(self, summary):

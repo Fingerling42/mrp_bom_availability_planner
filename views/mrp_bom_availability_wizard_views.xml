@@ -17,13 +17,13 @@
                             <field name="product_tmpl_id" invisible="1"/>
                             <field name="bom_id" required="1" domain="[('type', 'in', ['normal', 'phantom']), '|', ('product_id', '=', product_id), '&amp;', ('product_id', '=', False), ('product_tmpl_id', '=', product_tmpl_id)]"/>
                             <field name="location_ids" widget="many2many_tags" required="1"/>
-                            <field name="target_qty"/>
                         </group>
                         <group>
                             <field name="product_uom_id"/>
                             <field name="availability_basis" widget="radio"/>
-                            <field name="explode_subassemblies"/>
-                            <field name="include_zero_required"/>
+                            <field name="target_qty" invisible="1"/>
+                            <field name="explode_subassemblies" invisible="1"/>
+                            <field name="include_zero_required" invisible="1"/>
                         </group>
                     </group>
                     <group string="Summary" col="4">
@@ -32,55 +32,9 @@
                         <field name="bottleneck_qty"/>
                         <field name="summary" nolabel="1" colspan="4" placeholder="Run Compute Availability to calculate component availability."/>
                     </group>
-                    <notebook>
-                        <page string="Components">
-                            <field name="line_ids" readonly="1">
-                                <tree decoration-danger="line_type == 'component' and availability_state in ('shortage', 'zero')" decoration-success="line_type == 'component' and availability_state == 'ok'" decoration-warning="is_bottleneck" decoration-bf="is_bottleneck" decoration-muted="line_type == 'subassembly'">
-                                    <field name="is_bottleneck" invisible="1"/>
-                                    <field name="bottleneck_note" optional="show"/>
-                                    <field name="availability_state" optional="show"/>
-                                    <field name="component_label" optional="show"/>
-                                    <field name="required_qty_per_unit" optional="show"/>
-                                    <field name="required_qty_for_target" optional="show"/>
-                                    <field name="available_qty" optional="show"/>
-                                    <field name="can_produce_qty" optional="show"/>
-                                    <field name="shortage_qty" optional="show"/>
-                                    <field name="product_uom_id" optional="show"/>
-                                    <field name="line_type" optional="hide"/>
-                                    <field name="level" optional="hide"/>
-                                    <field name="product_id" optional="hide"/>
-                                    <field name="parent_bom_id" optional="hide"/>
-                                    <field name="available_location_note" optional="hide"/>
-                                    <field name="route_note" optional="hide"/>
-                                </tree>
-                                <form string="Component Availability">
-                                    <group>
-                                        <group>
-                                            <field name="bottleneck_note"/>
-                                            <field name="availability_state"/>
-                                            <field name="line_type"/>
-                                            <field name="level"/>
-                                            <field name="component_label"/>
-                                            <field name="product_id"/>
-                                            <field name="product_uom_id"/>
-                                        </group>
-                                        <group>
-                                            <field name="required_qty_per_unit"/>
-                                            <field name="required_qty_for_target"/>
-                                            <field name="available_qty"/>
-                                            <field name="can_produce_qty"/>
-                                            <field name="shortage_qty"/>
-                                        </group>
-                                    </group>
-                                    <group>
-                                        <field name="parent_bom_id"/>
-                                        <field name="available_location_note"/>
-                                        <field name="route_note" nolabel="1"/>
-                                    </group>
-                                </form>
-                            </field>
-                        </page>
-                    </notebook>
+                    <group string="Overview" col="1">
+                        <field name="availability_overview_html" widget="html" nolabel="1"/>
+                    </group>
                 </sheet>
             </form>
         </field>
