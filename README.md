@@ -10,8 +10,7 @@ materials.
 - Show the main bottleneck component.
 - Show component shortages for a target quantity.
 - Show components that are available with enough stock.
-- Read stock from selected internal source locations.
-- Optionally include child locations in availability calculations.
+- Read stock from selected internal stock locations.
 - Support On Hand and Available / Unreserved availability basis.
 - Explode multi-level BoMs.
 - Filter variant-specific BoM lines using Apply on Variants.
@@ -33,7 +32,7 @@ MRP BoM Availability Planner.
 Use Manufacturing -> Reporting -> BoM Availability Planner to open the
 availability wizard.
 
-Select a product variant, bill of materials, source locations, target quantity,
+Select a product variant, bill of materials, stock locations, target quantity,
 and availability basis. Use Compute Availability to calculate component
 requirements, available quantities, shortages, and bottlenecks.
 

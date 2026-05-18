@@ -7,30 +7,29 @@ from odoo.exceptions import UserError
 class MrpBomAvailabilityWizard(models.TransientModel):
     _name = "mrp.bom.availability.wizard"
     _description = "BoM Availability Planner"
+    _rec_name = "name"
+
+    name = fields.Char(
+        default=lambda self: _("BoM Availability Planner"),
+        readonly=True,
+    )
 
     product_id = fields.Many2one(
         "product.product",
         string="Product Variant",
-        required=True,
         domain="[('type', 'in', ['product', 'consu'])]",
     )
     bom_id = fields.Many2one(
         "mrp.bom",
         string="Bill of Materials",
-        required=True,
     )
     location_ids = fields.Many2many(
         "stock.location",
-        string="Source Locations",
+        string="Locations",
         required=True,
         domain="[('usage', '=', 'internal')]",
         default=lambda self: self._default_location_ids(),
         help="Internal stock locations used to calculate available component quantities.",
-    )
-    include_child_locations = fields.Boolean(
-        string="Include Child Locations",
-        default=True,
-        help="When enabled, availability is calculated from selected locations and all their child locations.",
     )
     target_qty = fields.Float(
         string="Target Quantity",
@@ -92,6 +91,11 @@ class MrpBomAvailabilityWizard(models.TransientModel):
     def _default_location_ids(self):
         return self.env["stock.location"].search([("usage", "=", "internal")], limit=1)
 
+    @api.model
+    def action_open_planner(self):
+        wizard = self.create({})
+        return wizard._reopen_wizard()
+
     @api.onchange("product_id")
     def _onchange_product_id(self):
         for wizard in self:
@@ -121,10 +125,14 @@ class MrpBomAvailabilityWizard(models.TransientModel):
 
     def action_compute_availability(self):
         self.ensure_one()
+        if not self.product_id:
+            raise UserError(_("Select a Product Variant."))
+        if not self.bom_id:
+            raise UserError(_("Select a Bill of Materials."))
         if self.target_qty < 0:
             raise UserError(_("Target Quantity cannot be negative."))
         if not self.location_ids:
-            raise UserError(_("Select at least one Source Location."))
+            raise UserError(_("Select at least one Location."))
 
         self.line_ids.unlink()
         aggregated_requirements = {}
@@ -158,6 +166,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             "view_mode": "form",
             "res_id": self.id,
             "target": "current",
+            "context": {"form_view_initial_mode": "edit"},
         }
 
     def _explode_bom(
@@ -295,26 +304,17 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         product_value_ids = set(product.product_template_attribute_value_ids.ids)
         return set(required_values.ids).issubset(product_value_ids)
 
-    def _get_available_quantities(
-        self, products, locations, include_child_locations=True
-    ):
+    def _get_available_quantities(self, products, locations):
         self.ensure_one()
         qty_by_product = {product.id: 0.0 for product in products}
         location_note_by_product = {product.id: "" for product in products}
         if not products or not locations:
             return qty_by_product, location_note_by_product
 
-        if include_child_locations:
-            all_locations = self.env["stock.location"].search(
-                [("id", "child_of", locations.ids)]
-            )
-        else:
-            all_locations = locations
-
         groups = self.env["stock.quant"].read_group(
             [
                 ("product_id", "in", products.ids),
-                ("location_id", "in", all_locations.ids),
+                ("location_id", "in", locations.ids),
             ],
             ["product_id", "quantity", "reserved_quantity"],
             ["product_id", "location_id"],
@@ -366,7 +366,6 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             self._get_available_quantities(
                 products,
                 self.location_ids,
-                self.include_child_locations,
             )
         )
         prepared_lines = []
@@ -453,20 +452,14 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         zero_count = sum(
             1 for line in prepared_lines if line["availability_state"] == "zero"
         )
-        child_mode = (
-            _("including child locations")
-            if self.include_child_locations
-            else _("without child locations")
-        )
         summary = _(
             "Can produce now: %(qty)s unit(s).\n"
-            "Availability calculated across %(location_count)s selected source location(s), %(child_mode)s.\n"
+            "Availability calculated across %(location_count)s selected location(s).\n"
             "Main bottleneck: %(product)s.\n"
             "%(shortage_count)s component(s) short for target, %(zero_count)s with zero availability."
         ) % {
             "qty": overall_can_produce,
             "location_count": len(self.location_ids),
-            "child_mode": child_mode,
             "product": bottleneck_product.display_name,
             "shortage_count": shortage_count,
             "zero_count": zero_count,
