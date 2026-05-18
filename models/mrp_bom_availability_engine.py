@@ -1,5 +1,4 @@
 import math
-from html import escape
 
 from odoo import _, models
 from odoo.exceptions import UserError
@@ -15,12 +14,42 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
 
     def compute(self, wizard):
         wizard.ensure_one()
+        return self.get_availability_data(
+            wizard.product_id.id,
+            wizard.bom_id.id,
+            wizard.location_ids.ids,
+            wizard.availability_basis,
+        )
+
+    def get_availability_data(
+        self,
+        product_id,
+        bom_id,
+        location_ids,
+        availability_basis="on_hand",
+    ):
+        product = (
+            self.env["product.product"].browse(product_id).exists()
+            if product_id
+            else self.env["product.product"]
+        )
+        bom = (
+            self.env["mrp.bom"].browse(bom_id).exists()
+            if bom_id
+            else self.env["mrp.bom"]
+        )
+        locations = (
+            self.env["stock.location"].browse(location_ids).exists()
+            if location_ids
+            else self.env["stock.location"]
+        )
+        self._validate_availability_inputs(product, bom, locations, availability_basis)
 
         aggregated_requirements = {}
         overview_nodes = []
         self._explode_bom(
-            wizard.bom_id,
-            wizard.product_id,
+            bom,
+            product,
             factor=1.0,
             overview_nodes=overview_nodes,
             aggregated=aggregated_requirements,
@@ -28,8 +57,8 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         )
 
         if not aggregated_requirements:
-            values = wizard._empty_result_values(_("No BoM components found."))
-            values["availability_overview_html"] = self._empty_overview_html(
+            values = self._empty_result_values(_("No BoM components found."))
+            values["availability_overview_data"] = self._empty_overview_data(
                 _("No BoM components found.")
             )
             return values
@@ -37,8 +66,8 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         products = self.env["product.product"].browse(list(aggregated_requirements))
         available_qty_by_product = self._get_available_quantities(
             products,
-            wizard.location_ids,
-            wizard.availability_basis,
+            locations,
+            availability_basis,
         )
         bottleneck_product, bottleneck_available, can_produce_qty = (
             self._get_bottleneck(aggregated_requirements, available_qty_by_product)
@@ -56,13 +85,40 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
                 "qty": can_produce_qty,
                 "product": bottleneck_product.display_name,
             },
-            "availability_overview_html": self._prepare_overview_html(
+            "availability_overview_data": self._prepare_overview_data(
                 overview_nodes,
                 aggregated_requirements,
                 available_qty_by_product,
                 can_produce_qty,
             ),
         }
+
+    def _validate_availability_inputs(
+        self,
+        product,
+        bom,
+        locations,
+        availability_basis,
+    ):
+        if not product:
+            raise UserError(_("Select a Product Variant."))
+        if not bom:
+            raise UserError(_("Select a Bill of Materials."))
+        if not locations:
+            raise UserError(_("Select at least one Location."))
+        if availability_basis not in ("on_hand", "available"):
+            raise UserError(_("Select a valid availability basis."))
+        if bom.type not in ("normal", "phantom"):
+            raise UserError(_("Select a manufacturing or kit Bill of Materials."))
+        if bom.company_id and bom.company_id != self.env.company:
+            raise UserError(_("Select a Bill of Materials from the current company."))
+        if any(
+            location.company_id and location.company_id != self.env.company
+            for location in locations
+        ):
+            raise UserError(_("Select only locations from the current company."))
+        if not self._is_bom_applicable_to_product(bom, product):
+            raise UserError(_("Selected Bill of Materials does not match the product."))
 
     def get_matching_bom(self, product):
         if not product:
@@ -277,7 +333,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             bottleneck["can_produce_qty"],
         )
 
-    def _prepare_overview_html(
+    def _prepare_overview_data(
         self,
         overview_nodes,
         aggregated_requirements,
@@ -285,61 +341,28 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         overall_can_produce_qty,
     ):
         if not overview_nodes:
-            return self._empty_overview_html(_("No BoM components found."))
+            return self._empty_overview_data(_("No BoM components found."))
 
-        header = {
-            "component": escape(_("Component")),
-            "required": escape(_("Required / Unit")),
-            "available": escape(_("Available")),
-            "can_produce": escape(_("Can Produce")),
-            "status": escape(_("Status")),
-        }
-        return """
-            <style>
-                .bap-overview { margin-top: 12px; border-top: 1px solid #d8dde6; font-size: 13px; }
-                .bap-row, .bap-head {
-                    display: grid;
-                    grid-template-columns: minmax(360px, 1fr) 130px 120px 120px 120px;
-                    column-gap: 16px;
-                    align-items: center;
-                    min-height: 36px;
-                    border-bottom: 1px solid #eef0f4;
-                }
-                .bap-head { color: #5f6b7a; font-weight: 600; }
-                .bap-product { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-                .bap-number { text-align: right; white-space: nowrap; }
-                .bap-children { margin-left: 24px; }
-                .bap-subassembly > summary { list-style-position: outside; cursor: pointer; }
-                .bap-subassembly > summary::-webkit-details-marker { color: #5f6b7a; }
-                .bap-structure { color: #5f6b7a; background: #f8f9fb; }
-                .bap-bottleneck { color: #8a5a00; font-weight: 600; background: #fff8e8; }
-                .bap-ok { color: #287a3e; }
-                .bap-zero, .bap-insufficient { color: #c62828; }
-            </style>
-            <div class="bap-overview">
-                <div class="bap-head">
-                    <div>%(component)s</div>
-                    <div class="bap-number">%(required)s</div>
-                    <div class="bap-number">%(available)s</div>
-                    <div class="bap-number">%(can_produce)s</div>
-                    <div>%(status)s</div>
-                </div>
-                %(rows)s
-            </div>
-        """ % {
-            **header,
-            "rows": "".join(
-                self._render_overview_node(
+        return {
+            "columns": [
+                {"name": "component", "label": _("Component")},
+                {"name": "required_qty", "label": _("Required / Unit")},
+                {"name": "available_qty", "label": _("Available")},
+                {"name": "can_produce_qty", "label": _("Can Produce")},
+                {"name": "status", "label": _("Status")},
+            ],
+            "lines": [
+                self._prepare_overview_node(
                     node,
                     aggregated_requirements,
                     available_qty_by_product,
                     overall_can_produce_qty,
                 )
                 for node in overview_nodes
-            )
+            ],
         }
 
-    def _render_overview_node(
+    def _prepare_overview_node(
         self,
         node,
         aggregated_requirements,
@@ -348,30 +371,21 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
     ):
         product = node["product"]
         if node["line_type"] == LINE_TYPE_SUBASSEMBLY:
-            row = self._render_overview_row(
-                product=product,
-                required_qty=node["required_qty"],
-                uom_name=product.uom_id.name,
-                available_qty=None,
-                can_produce_qty=None,
-                status=_("Structure"),
-                css_class="bap-row bap-structure",
-            )
-            children = "".join(
-                self._render_overview_node(
-                    child,
-                    aggregated_requirements,
-                    available_qty_by_product,
-                    overall_can_produce_qty,
-                )
-                for child in node["children"]
-            )
-            return """
-                <details class="bap-subassembly" open>
-                    <summary>%s</summary>
-                    <div class="bap-children">%s</div>
-                </details>
-            """ % (row, children)
+            return {
+                **self._prepare_product_node(product, node["required_qty"]),
+                "line_type": LINE_TYPE_SUBASSEMBLY,
+                "status": "structure",
+                "status_label": _("Structure"),
+                "children": [
+                    self._prepare_overview_node(
+                        child,
+                        aggregated_requirements,
+                        available_qty_by_product,
+                        overall_can_produce_qty,
+                    )
+                    for child in node["children"]
+                ],
+            }
 
         requirement = aggregated_requirements[product.id]
         required_qty = requirement["required_qty"]
@@ -383,66 +397,48 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         )
         if can_produce_qty == overall_can_produce_qty:
             status = _("Bottleneck")
-            css_class = "bap-row bap-bottleneck"
+            status_code = "bottleneck"
         elif available_qty <= 0:
             status = _("Zero Available")
-            css_class = "bap-row bap-zero"
+            status_code = "zero_available"
         elif can_produce_qty <= 0:
             status = _("Not Enough")
-            css_class = "bap-row bap-insufficient"
+            status_code = "not_enough"
         else:
             status = _("Enough")
-            css_class = "bap-row bap-ok"
+            status_code = "enough"
 
-        return self._render_overview_row(
-            product=product,
-            required_qty=node["required_qty"],
-            uom_name=product.uom_id.name,
-            available_qty=available_qty,
-            can_produce_qty=can_produce_qty,
-            status=status,
-            css_class=css_class,
-        )
+        return {
+            **self._prepare_product_node(product, node["required_qty"]),
+            "line_type": LINE_TYPE_COMPONENT,
+            "available_qty": available_qty,
+            "can_produce_qty": can_produce_qty,
+            "status": status_code,
+            "status_label": status,
+            "children": [],
+        }
 
-    def _render_overview_row(
-        self,
-        product,
-        required_qty,
-        uom_name,
-        available_qty,
-        can_produce_qty,
-        status,
-        css_class,
-    ):
-        available = self._format_qty(available_qty) if available_qty is not None else "—"
-        can_produce = (
-            self._format_qty(can_produce_qty, precision=0)
-            if can_produce_qty is not None
-            else "—"
-        )
-        return """
-            <div class="%s">
-                <div class="bap-product" title="%s">%s</div>
-                <div class="bap-number">%s %s</div>
-                <div class="bap-number">%s</div>
-                <div class="bap-number">%s</div>
-                <div>%s</div>
-            </div>
-        """ % (
-            css_class,
-            escape(product.display_name),
-            escape(product.display_name),
-            self._format_qty(required_qty),
-            escape(uom_name or ""),
-            available,
-            can_produce,
-            escape(status),
-        )
+    def _prepare_product_node(self, product, required_qty):
+        return {
+            "product_id": product.id,
+            "product_display_name": product.display_name,
+            "required_qty": required_qty,
+            "uom_id": product.uom_id.id,
+            "uom_name": product.uom_id.name,
+        }
 
-    def _empty_overview_html(self, message):
-        return '<p class="text-muted">%s</p>' % escape(message)
+    def _empty_overview_data(self, message):
+        return {
+            "columns": [],
+            "lines": [],
+            "message": message,
+        }
 
-    def _format_qty(self, qty, precision=4):
-        if qty is None:
-            return "—"
-        return ("%0.*f" % (precision, qty)).rstrip("0").rstrip(".") or "0"
+    def _empty_result_values(self, summary):
+        return {
+            "can_produce_qty": 0.0,
+            "bottleneck_product_id": False,
+            "bottleneck_qty": 0.0,
+            "summary": summary,
+            "availability_overview_data": False,
+        }

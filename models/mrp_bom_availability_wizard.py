@@ -1,5 +1,4 @@
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError
 
 
 class MrpBomAvailabilityWizard(models.TransientModel):
@@ -71,10 +70,9 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         string="Summary",
         readonly=True,
     )
-    availability_overview_html = fields.Html(
-        string="Availability Overview",
+    availability_overview_data = fields.Json(
+        string="Availability Overview Data",
         readonly=True,
-        sanitize=False,
     )
 
     @api.model
@@ -110,7 +108,6 @@ class MrpBomAvailabilityWizard(models.TransientModel):
 
     def action_compute_availability(self):
         self.ensure_one()
-        self._validate_compute_inputs()
 
         # Keep the wizard as a UI coordinator; the engine owns all explosion and
         # stock availability rules.
@@ -118,34 +115,13 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         self.write(summary_values)
         return self._reopen_wizard()
 
-    def _validate_compute_inputs(self):
-        self.ensure_one()
-        if not self.product_id:
-            raise UserError(_("Select a Product Variant."))
-        if not self.bom_id:
-            raise UserError(_("Select a Bill of Materials."))
-        if not self.location_ids:
-            raise UserError(_("Select at least one Location."))
-        if self.bom_id.type not in ("normal", "phantom"):
-            raise UserError(_("Select a manufacturing or kit Bill of Materials."))
-        if self.bom_id.company_id and self.bom_id.company_id != self.company_id:
-            raise UserError(_("Select a Bill of Materials from the current company."))
-        if any(
-            location.company_id and location.company_id != self.company_id
-            for location in self.location_ids
-        ):
-            raise UserError(_("Select only locations from the current company."))
-        engine = self.env["mrp.bom.availability.engine"]
-        if not engine._is_bom_applicable_to_product(self.bom_id, self.product_id):
-            raise UserError(_("Selected Bill of Materials does not match the product."))
-
     def _reset_result_values(self):
         return {
             "can_produce_qty": 0.0,
             "bottleneck_product_id": False,
             "bottleneck_qty": 0.0,
             "summary": False,
-            "availability_overview_html": False,
+            "availability_overview_data": False,
         }
 
     def _empty_result_values(self, summary):

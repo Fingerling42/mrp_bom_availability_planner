@@ -29,9 +29,7 @@
                         <field name="bottleneck_product_id"/>
                         <field name="bottleneck_qty"/>
                         <field name="summary" nolabel="1" colspan="4" placeholder="Run Compute Availability to calculate component availability."/>
-                    </group>
-                    <group string="Overview" col="1">
-                        <field name="availability_overview_html" widget="html" nolabel="1"/>
+                        <field name="availability_overview_data" invisible="1"/>
                     </group>
                 </sheet>
             </form>

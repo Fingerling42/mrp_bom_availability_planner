@@ -8,11 +8,11 @@ materials.
 
 - Calculate producible finished quantity from a selected BoM.
 - Show the main bottleneck component.
-- Show component availability in a BoM Overview-like hierarchy.
+- Prepare structured component availability data for a BoM Overview-like UI.
 - Read stock from selected internal stock locations.
 - Support On Hand and Available / Unreserved availability basis.
 - Explode multi-level BoMs.
-- Show collapsible subassembly context without counting subassembly stock as a bottleneck.
+- Keep subassembly context without counting subassembly stock as a bottleneck.
 - Filter variant-specific BoM lines using Apply on Variants.
 - Aggregate repeated components in the exploded BoM.
 - Normalize component quantities to the product default unit of measure.
@@ -36,9 +36,9 @@ Select a product variant, bill of materials, stock locations, and availability
 basis. Use Compute Availability to calculate component requirements, available
 quantities, producible quantity, and bottlenecks.
 
-The overview shows multi-level BoMs as expandable structure rows. Availability
-and bottleneck metrics are calculated for leaf components; existing subassembly
-stock is not consumed first.
+The backend prepares multi-level BoM availability data for an overview UI.
+Availability and bottleneck metrics are calculated for leaf components; existing
+subassembly stock is not consumed first.
 
 The module only reads current stock.quant quantities. It does not consider
 forecasted receipts, planned purchases, reservations, lots, serial numbers,
