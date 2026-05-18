@@ -11,7 +11,8 @@
                             <field name="product_id"/>
                             <field name="product_tmpl_id" invisible="1"/>
                             <field name="bom_id" domain="[('type', 'in', ['normal', 'phantom']), '|', ('product_id', '=', product_id), '&amp;', ('product_id', '=', False), ('product_tmpl_id', '=', product_tmpl_id)]"/>
-                            <field name="location_id"/>
+                            <field name="location_ids" widget="many2many_tags"/>
+                            <field name="include_child_locations"/>
                             <field name="target_qty"/>
                         </group>
                         <group>
@@ -47,7 +48,7 @@
                                     <field name="shortage_qty"/>
                                     <field name="product_uom_id"/>
                                     <field name="parent_bom_id"/>
-                                    <field name="source_location_id"/>
+                                    <field name="available_location_note"/>
                                     <field name="route_note"/>
                                 </tree>
                                 <form string="Component Availability">
@@ -69,7 +70,7 @@
                                     </group>
                                     <group>
                                         <field name="parent_bom_id"/>
-                                        <field name="source_location_id"/>
+                                        <field name="available_location_note"/>
                                         <field name="route_note"/>
                                     </group>
                                 </form>

@@ -19,12 +19,18 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         string="Bill of Materials",
         required=True,
     )
-    location_id = fields.Many2one(
+    location_ids = fields.Many2many(
         "stock.location",
-        string="Source Location",
+        string="Source Locations",
         required=True,
         domain="[('usage', '=', 'internal')]",
-        default=lambda self: self._default_location_id(),
+        default=lambda self: self._default_location_ids(),
+        help="Internal stock locations used to calculate available component quantities.",
+    )
+    include_child_locations = fields.Boolean(
+        string="Include Child Locations",
+        default=True,
+        help="When enabled, availability is calculated from selected locations and all their child locations.",
     )
     target_qty = fields.Float(
         string="Target Quantity",
@@ -83,7 +89,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
     )
 
     @api.model
-    def _default_location_id(self):
+    def _default_location_ids(self):
         return self.env["stock.location"].search([("usage", "=", "internal")], limit=1)
 
     @api.onchange("product_id")
@@ -117,6 +123,8 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         self.ensure_one()
         if self.target_qty < 0:
             raise UserError(_("Target Quantity cannot be negative."))
+        if not self.location_ids:
+            raise UserError(_("Select at least one Source Location."))
 
         self.line_ids.unlink()
         aggregated_requirements = {}
@@ -284,33 +292,58 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         product_value_ids = set(product.product_template_attribute_value_ids.ids)
         return set(required_values.ids).issubset(product_value_ids)
 
-    def _get_available_quantities(self, products):
+    def _get_available_quantities(
+        self, products, locations, include_child_locations=True
+    ):
         self.ensure_one()
         qty_by_product = {product.id: 0.0 for product in products}
-        if not products:
-            return qty_by_product
+        location_note_by_product = {product.id: "" for product in products}
+        if not products or not locations:
+            return qty_by_product, location_note_by_product
+
+        if include_child_locations:
+            all_locations = self.env["stock.location"].search(
+                [("id", "child_of", locations.ids)]
+            )
+        else:
+            all_locations = locations
 
         groups = self.env["stock.quant"].read_group(
             [
                 ("product_id", "in", products.ids),
-                ("location_id", "child_of", self.location_id.id),
+                ("location_id", "in", all_locations.ids),
             ],
             ["product_id", "quantity", "reserved_quantity"],
-            ["product_id"],
+            ["product_id", "location_id"],
         )
         product_by_id = {product.id: product for product in products}
+        location_lines_by_product = {product.id: [] for product in products}
         for group in groups:
             product_id = group["product_id"][0]
+            location_id = group["location_id"][0]
+            location_name = group["location_id"][1]
             quantity = group.get("quantity", 0.0)
             if self.availability_basis == "available":
                 quantity -= group.get("reserved_quantity", 0.0)
-            qty_by_product[product_id] = product_by_id[
-                product_id
-            ].uom_id._compute_quantity(
+            product_qty = product_by_id[product_id].uom_id._compute_quantity(
                 quantity,
                 product_by_id[product_id].uom_id,
             )
-        return qty_by_product
+            if product_qty:
+                qty_by_product[product_id] += product_qty
+                location_lines_by_product[product_id].append(
+                    (location_name, product_qty, location_id)
+                )
+
+        for product_id, location_lines in location_lines_by_product.items():
+            location_note_by_product[product_id] = "; ".join(
+                "%s: %s" % (location_name, qty)
+                for location_name, qty, _location_id in sorted(
+                    location_lines, key=lambda item: (item[0], item[2])
+                )
+            )
+
+        return qty_by_product, location_note_by_product
 
     def _prepare_result_lines(self, aggregated_requirements):
         self.ensure_one()
@@ -325,7 +358,13 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         products = self.env["product.product"].browse(
             list(aggregated_requirements.keys())
         )
-        available_qty_by_product = self._get_available_quantities(products)
+        available_qty_by_product, location_note_by_product = (
+            self._get_available_quantities(
+                products,
+                self.location_ids,
+                self.include_child_locations,
+            )
+        )
         prepared_lines = []
 
         for sequence, requirement in enumerate(
@@ -376,7 +415,9 @@ class MrpBomAvailabilityWizard(models.TransientModel):
                     "can_produce_qty": can_produce_qty,
                     "shortage_qty": shortage_qty,
                     "availability_state": availability_state,
-                    "source_location_id": self.location_id.id,
+                    "available_location_note": location_note_by_product.get(
+                        product.id, ""
+                    ),
                     "route_note": route_note,
                 }
             )
@@ -408,11 +449,20 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         zero_count = sum(
             1 for line in prepared_lines if line["availability_state"] == "zero"
         )
+        child_mode = (
+            _("including child locations")
+            if self.include_child_locations
+            else _("without child locations")
+        )
         summary = _(
-            "Can produce %(qty)s unit(s). Bottleneck: %(product)s. "
+            "Can produce now: %(qty)s unit(s).\n"
+            "Availability calculated across %(location_count)s selected source location(s), %(child_mode)s.\n"
+            "Main bottleneck: %(product)s.\n"
             "%(shortage_count)s component(s) short for target, %(zero_count)s with zero availability."
         ) % {
             "qty": overall_can_produce,
+            "location_count": len(self.location_ids),
+            "child_mode": child_mode,
             "product": bottleneck_product.display_name,
             "shortage_count": shortage_count,
             "zero_count": zero_count,
@@ -485,9 +535,10 @@ class MrpBomAvailabilityWizardLine(models.TransientModel):
         ],
         string="State",
     )
-    source_location_id = fields.Many2one(
-        "stock.location",
-        string="Source Location",
+    available_location_note = fields.Char(
+        string="Available Locations",
+        readonly=True,
+        help="Human-readable summary of where available stock was found.",
     )
     route_note = fields.Char(
         string="BoM Path / Note",
