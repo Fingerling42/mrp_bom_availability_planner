@@ -537,6 +537,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             "level": level,
             "parent_bom_id": parent_bom.id if parent_bom else False,
             "product_id": product.id,
+            "component_label": self._format_component_label(product, level, line_type),
             "product_uom_id": product.uom_id.id,
             "required_qty_per_unit": required_qty_per_unit,
             "required_qty_for_target": required_qty_for_target,
@@ -547,6 +548,11 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             "available_location_note": location_note_by_product.get(product.id, ""),
             "route_note": route_note,
         }
+
+    def _format_component_label(self, product, level, line_type):
+        prefix = "↳ " * max(level, 0)
+        marker = "▸ " if line_type == LINE_TYPE_SUBASSEMBLY else ""
+        return "%s%s%s" % (prefix, marker, product.display_name)
 
 
 class MrpBomAvailabilityWizardLine(models.TransientModel):
@@ -580,6 +586,10 @@ class MrpBomAvailabilityWizardLine(models.TransientModel):
         "product.product",
         string="Component",
         required=True,
+    )
+    component_label = fields.Char(
+        string="Component",
+        readonly=True,
     )
     product_uom_id = fields.Many2one(
         "uom.uom",

@@ -35,23 +35,22 @@
                     <notebook>
                         <page string="Components">
                             <field name="line_ids" readonly="1">
-                                <tree decoration-danger="availability_state in ('shortage', 'zero')" decoration-success="availability_state == 'ok'" decoration-warning="is_bottleneck" decoration-muted="line_type == 'subassembly'">
-                                    <field name="sequence" invisible="1"/>
-                                    <field name="is_bottleneck" invisible="1"/>
+                                <tree decoration-danger="availability_state in ('shortage', 'zero')" decoration-success="availability_state == 'ok'" decoration-warning="bottleneck_note" decoration-bf="bottleneck_note" decoration-muted="line_type == 'subassembly'">
                                     <field name="bottleneck_note" optional="show"/>
                                     <field name="availability_state" optional="show"/>
-                                    <field name="line_type" optional="show"/>
-                                    <field name="level" optional="show"/>
-                                    <field name="route_note" optional="show"/>
-                                    <field name="product_id" optional="show"/>
+                                    <field name="component_label" optional="show"/>
                                     <field name="required_qty_per_unit" optional="show"/>
                                     <field name="required_qty_for_target" optional="show"/>
                                     <field name="available_qty" optional="show"/>
                                     <field name="can_produce_qty" optional="show"/>
                                     <field name="shortage_qty" optional="show"/>
                                     <field name="product_uom_id" optional="show"/>
+                                    <field name="line_type" optional="hide"/>
+                                    <field name="level" optional="hide"/>
+                                    <field name="product_id" optional="hide"/>
                                     <field name="parent_bom_id" optional="hide"/>
                                     <field name="available_location_note" optional="hide"/>
+                                    <field name="route_note" optional="hide"/>
                                 </tree>
                                 <form string="Component Availability">
                                     <group>
@@ -60,6 +59,7 @@
                                             <field name="availability_state"/>
                                             <field name="line_type"/>
                                             <field name="level"/>
+                                            <field name="component_label"/>
                                             <field name="product_id"/>
                                             <field name="product_uom_id"/>
                                         </group>
