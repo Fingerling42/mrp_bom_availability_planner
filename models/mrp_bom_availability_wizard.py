@@ -383,7 +383,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             available_qty = available_qty_by_product.get(product.id, 0.0)
             required_qty_for_target = required_qty_per_unit * self.target_qty
             can_produce_qty = (
-                math.floor(available_qty / required_qty_per_unit)
+                max(math.floor(available_qty / required_qty_per_unit), 0)
                 if required_qty_per_unit > 0
                 else 0
             )
