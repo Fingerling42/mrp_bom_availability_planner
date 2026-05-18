@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_mrp_bom_availability_wizard_form" model="ir.ui.view">
+        <field name="name">mrp.bom.availability.wizard.form</field>
+        <field name="model">mrp.bom.availability.wizard</field>
+        <field name="arch" type="xml">
+            <form string="BoM Availability Planner">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="product_id"/>
+                            <field name="product_tmpl_id" invisible="1"/>
+                            <field name="bom_id" domain="[('type', 'in', ['normal', 'phantom']), '|', ('product_id', '=', product_id), '&amp;', ('product_id', '=', False), ('product_tmpl_id', '=', product_tmpl_id)]"/>
+                            <field name="location_id"/>
+                            <field name="target_qty"/>
+                        </group>
+                        <group>
+                            <field name="product_uom_id"/>
+                            <field name="availability_basis" widget="radio"/>
+                            <field name="explode_subassemblies"/>
+                            <field name="include_zero_required"/>
+                        </group>
+                    </group>
+                    <group string="Summary">
+                        <group>
+                            <field name="can_produce_qty"/>
+                            <field name="bottleneck_product_id"/>
+                            <field name="bottleneck_qty"/>
+                        </group>
+                        <group>
+                            <field name="summary" nolabel="1" placeholder="Run Compute Availability to calculate component availability."/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Components">
+                            <field name="line_ids" readonly="1">
+                                <tree decoration-danger="availability_state in ('shortage', 'zero')" decoration-success="availability_state == 'ok'" decoration-warning="is_bottleneck">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="is_bottleneck"/>
+                                    <field name="availability_state"/>
+                                    <field name="level"/>
+                                    <field name="product_id"/>
+                                    <field name="required_qty_per_unit"/>
+                                    <field name="required_qty_for_target"/>
+                                    <field name="available_qty"/>
+                                    <field name="can_produce_qty"/>
+                                    <field name="shortage_qty"/>
+                                    <field name="product_uom_id"/>
+                                    <field name="parent_bom_id"/>
+                                    <field name="source_location_id"/>
+                                    <field name="route_note"/>
+                                </tree>
+                                <form string="Component Availability">
+                                    <group>
+                                        <group>
+                                            <field name="is_bottleneck"/>
+                                            <field name="availability_state"/>
+                                            <field name="level"/>
+                                            <field name="product_id"/>
+                                            <field name="product_uom_id"/>
+                                        </group>
+                                        <group>
+                                            <field name="required_qty_per_unit"/>
+                                            <field name="required_qty_for_target"/>
+                                            <field name="available_qty"/>
+                                            <field name="can_produce_qty"/>
+                                            <field name="shortage_qty"/>
+                                        </group>
+                                    </group>
+                                    <group>
+                                        <field name="parent_bom_id"/>
+                                        <field name="source_location_id"/>
+                                        <field name="route_note"/>
+                                    </group>
+                                </form>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <footer>
+                    <button name="action_compute_availability" string="Compute Availability" type="object" class="btn-primary"/>
+                    <button name="action_clear_lines" string="Clear Lines" type="object"/>
+                    <button string="Close" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_mrp_bom_availability_wizard" model="ir.actions.act_window">
+        <field name="name">BoM Availability Planner</field>
+        <field name="res_model">mrp.bom.availability.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_mrp_bom_availability_wizard_form"/>
+        <field name="target">current</field>
+    </record>
+
+    <menuitem
+        id="menu_mrp_bom_availability_wizard"
+        name="BoM Availability Planner"
+        parent="mrp.menu_mrp_reporting"
+        action="action_mrp_bom_availability_wizard"
+        sequence="90"/>
+</odoo>
