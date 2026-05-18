@@ -35,7 +35,8 @@
                     <notebook>
                         <page string="Components">
                             <field name="line_ids" readonly="1">
-                                <tree decoration-danger="availability_state in ('shortage', 'zero')" decoration-success="availability_state == 'ok'" decoration-warning="bottleneck_note" decoration-bf="bottleneck_note" decoration-muted="line_type == 'subassembly'">
+                                <tree decoration-danger="line_type == 'component' and availability_state in ('shortage', 'zero')" decoration-success="line_type == 'component' and availability_state == 'ok'" decoration-warning="is_bottleneck" decoration-bf="is_bottleneck" decoration-muted="line_type == 'subassembly'">
+                                    <field name="is_bottleneck" invisible="1"/>
                                     <field name="bottleneck_note" optional="show"/>
                                     <field name="availability_state" optional="show"/>
                                     <field name="component_label" optional="show"/>

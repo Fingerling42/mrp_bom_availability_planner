@@ -140,8 +140,8 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             raise UserError(_("Select a Product Variant."))
         if not self.bom_id:
             raise UserError(_("Select a Bill of Materials."))
-        if self.target_qty < 0:
-            raise UserError(_("Target Quantity cannot be negative."))
+        if self.target_qty <= 0:
+            raise UserError(_("Target Quantity must be greater than zero."))
         if not self.location_ids:
             raise UserError(_("Select at least one Location."))
 
@@ -306,7 +306,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         if exact_bom:
             return exact_bom
 
-        return bom_model.search(
+        template_boms = bom_model.search(
             [
                 *company_domain,
                 ("product_id", "=", False),
@@ -314,8 +314,29 @@ class MrpBomAvailabilityWizard(models.TransientModel):
                 ("type", "in", ["normal", "phantom"]),
             ],
             order="sequence, id",
-            limit=1,
         )
+        return template_boms.filtered(
+            lambda bom: self._is_bom_applicable_to_product(bom, product)
+        )[:1]
+
+    def _is_bom_applicable_to_product(self, bom, product):
+        if bom.product_id:
+            return bom.product_id == product
+        if bom.product_tmpl_id != product.product_tmpl_id:
+            return False
+
+        product_variants = getattr(bom, "product_variant_ids", False)
+        if product_variants:
+            return product in product_variants
+
+        possible_attribute_values = getattr(
+            bom, "possible_product_template_attribute_value_ids", False
+        )
+        if possible_attribute_values:
+            product_values = product.product_template_attribute_value_ids
+            return bool(product_values & possible_attribute_values)
+
+        return True
 
     def _extract_bom_find_result(self, found, product):
         if not isinstance(found, dict):
