@@ -315,6 +315,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             ],
             ["product_id", "quantity", "reserved_quantity"],
             ["product_id", "location_id"],
+            lazy=False,
         )
         product_by_id = {product.id: product for product in products}
         location_lines_by_product = {product.id: [] for product in products}
