@@ -1,12 +1,30 @@
 .o_bap_overview {
-    height: 100%;
-    overflow: auto;
+  height: 100%;
+  overflow: auto;
 }
 
 .o_bap_overview_content {
-    max-width: 1280px;
+  max-width: 1280px;
+}
+
+.o_bap_location_tags .badge {
+  align-items: center;
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.o_bap_location_tags .btn-close {
+  font-size: 0.55rem;
+}
+
+.o_bap_metric {
+  background: #fff;
+  border: 1px solid #d8dde6;
+  border-radius: 4px;
+  min-height: 88px;
+  padding: 12px;
 }
 
 .o_bap_empty {
-    color: #5f6b7a;
+  color: #5f6b7a;
 }

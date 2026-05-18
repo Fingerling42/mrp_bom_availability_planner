@@ -104,6 +104,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         return {
             "title": _("BoM Availability Planner"),
             "empty_message": _("No availability data yet."),
+            "company_id": self.env.company.id,
             "availability_basis_options": [
                 {"value": "on_hand", "label": _("On Hand")},
                 {"value": "available", "label": _("Available / Unreserved")},
@@ -111,6 +112,11 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             "default_location_ids": default_locations.ids,
             "default_location_names": default_locations.mapped("display_name"),
         }
+
+    def get_matching_bom_data(self, product_id):
+        product = self.env["product.product"].browse(product_id).exists()
+        bom = self.get_matching_bom(product) if product else self.env["mrp.bom"]
+        return self._record_display_data(bom)
 
     def _validate_availability_inputs(
         self,
@@ -458,4 +464,13 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             "bottleneck_qty": 0.0,
             "summary": summary,
             "availability_overview_data": False,
+        }
+
+    def _record_display_data(self, record):
+        if not record:
+            return False
+        record.ensure_one()
+        return {
+            "id": record.id,
+            "display_name": record.display_name,
         }
