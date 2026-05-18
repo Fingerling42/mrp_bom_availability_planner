@@ -40,7 +40,7 @@ class MrpBomAvailabilityWizardLine(models.TransientModel):
     )
     product_id = fields.Many2one(
         "product.product",
-        string="Component",
+        string="Component Product",
         required=True,
     )
     component_label = fields.Char(
