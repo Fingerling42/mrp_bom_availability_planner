@@ -26,24 +26,23 @@
                             <field name="include_zero_required"/>
                         </group>
                     </group>
-                    <group string="Summary">
-                        <group>
-                            <field name="can_produce_qty"/>
-                            <field name="bottleneck_product_id"/>
-                            <field name="bottleneck_qty"/>
-                        </group>
-                        <group>
-                            <field name="summary" nolabel="1" placeholder="Run Compute Availability to calculate component availability."/>
-                        </group>
+                    <group string="Summary" col="4">
+                        <field name="can_produce_qty"/>
+                        <field name="bottleneck_product_id"/>
+                        <field name="bottleneck_qty"/>
+                        <field name="summary" nolabel="1" colspan="4" placeholder="Run Compute Availability to calculate component availability."/>
                     </group>
                     <notebook>
                         <page string="Components">
                             <field name="line_ids" readonly="1">
-                                <tree decoration-danger="availability_state in ('shortage', 'zero')" decoration-success="availability_state == 'ok'" decoration-warning="is_bottleneck">
-                                    <field name="sequence" widget="handle"/>
-                                    <field name="is_bottleneck"/>
+                                <tree decoration-danger="availability_state in ('shortage', 'zero')" decoration-success="availability_state == 'ok'" decoration-warning="is_bottleneck" decoration-muted="line_type == 'subassembly'">
+                                    <field name="sequence" invisible="1"/>
+                                    <field name="is_bottleneck" invisible="1"/>
+                                    <field name="bottleneck_note"/>
                                     <field name="availability_state"/>
+                                    <field name="line_type"/>
                                     <field name="level"/>
+                                    <field name="route_note"/>
                                     <field name="product_id"/>
                                     <field name="required_qty_per_unit"/>
                                     <field name="required_qty_for_target"/>
@@ -53,13 +52,13 @@
                                     <field name="product_uom_id"/>
                                     <field name="parent_bom_id"/>
                                     <field name="available_location_note"/>
-                                    <field name="route_note"/>
                                 </tree>
                                 <form string="Component Availability">
                                     <group>
                                         <group>
-                                            <field name="is_bottleneck"/>
+                                            <field name="bottleneck_note"/>
                                             <field name="availability_state"/>
+                                            <field name="line_type"/>
                                             <field name="level"/>
                                             <field name="product_id"/>
                                             <field name="product_uom_id"/>
@@ -75,7 +74,7 @@
                                     <group>
                                         <field name="parent_bom_id"/>
                                         <field name="available_location_note"/>
-                                        <field name="route_note"/>
+                                        <field name="route_note" nolabel="1"/>
                                     </group>
                                 </form>
                             </field>

@@ -136,6 +136,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
 
         self.line_ids.unlink()
         aggregated_requirements = {}
+        structure_lines = []
         self._explode_bom(
             self.bom_id,
             self.product_id,
@@ -143,11 +144,13 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             level=0,
             path=self.product_id.display_name,
             aggregated=aggregated_requirements,
+            structure_lines=structure_lines,
             visited_bom_ids=set(),
         )
 
         line_commands, summary_values = self._prepare_result_lines(
-            aggregated_requirements
+            aggregated_requirements,
+            structure_lines,
         )
         self.write(
             {
@@ -177,10 +180,12 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         level=0,
         path=False,
         aggregated=None,
+        structure_lines=None,
         visited_bom_ids=None,
     ):
         self.ensure_one()
         aggregated = aggregated if aggregated is not None else {}
+        structure_lines = structure_lines if structure_lines is not None else []
         visited_bom_ids = visited_bom_ids if visited_bom_ids is not None else set()
         if not bom or not product:
             return aggregated
@@ -214,6 +219,17 @@ class MrpBomAvailabilityWizard(models.TransientModel):
                 child_factor = bom_line.product_uom_id._compute_quantity(
                     line_qty, component.uom_id
                 )
+                if child_factor > 0 or self.include_zero_required:
+                    structure_lines.append(
+                        {
+                            "product": component,
+                            "required_qty": child_factor,
+                            "level": level,
+                            "parent_bom": bom,
+                            "route_note": component_path,
+                            "sequence": bom_line.sequence,
+                        }
+                    )
                 self._explode_bom(
                     child_bom,
                     component,
@@ -221,6 +237,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
                     level=level + 1,
                     path=component_path,
                     aggregated=aggregated,
+                    structure_lines=structure_lines,
                     visited_bom_ids=set(visited_bom_ids),
                 )
                 continue
@@ -349,9 +366,10 @@ class MrpBomAvailabilityWizard(models.TransientModel):
 
         return qty_by_product, location_note_by_product
 
-    def _prepare_result_lines(self, aggregated_requirements):
+    def _prepare_result_lines(self, aggregated_requirements, structure_lines=None):
         self.ensure_one()
-        if not aggregated_requirements:
+        structure_lines = structure_lines or []
+        if not aggregated_requirements and not structure_lines:
             return [], {
                 "can_produce_qty": 0.0,
                 "bottleneck_product_id": False,
@@ -359,9 +377,9 @@ class MrpBomAvailabilityWizard(models.TransientModel):
                 "summary": _("No BoM components found."),
             }
 
-        products = self.env["product.product"].browse(
-            list(aggregated_requirements.keys())
-        )
+        product_ids = set(aggregated_requirements.keys())
+        product_ids.update(line["product"].id for line in structure_lines)
+        products = self.env["product.product"].browse(list(product_ids))
         available_qty_by_product, location_note_by_product = (
             self._get_available_quantities(
                 products,
@@ -370,62 +388,61 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         )
         prepared_lines = []
 
+        for sequence, structure_line in enumerate(
+            sorted(
+                structure_lines,
+                key=lambda data: (data["route_note"], data["sequence"]),
+            ),
+            start=1,
+        ):
+            product = structure_line["product"]
+            prepared_lines.append(
+                self._prepare_result_line_values(
+                    sequence * 10,
+                    structure_line["level"],
+                    structure_line["parent_bom"],
+                    product,
+                    structure_line["required_qty"],
+                    structure_line["route_note"],
+                    "subassembly",
+                    available_qty_by_product,
+                    location_note_by_product,
+                )
+            )
+
+        component_lines = []
+        start_sequence = len(prepared_lines) + 1
         for sequence, requirement in enumerate(
             sorted(
                 aggregated_requirements.values(),
-                key=lambda data: data["product"].display_name,
+                key=lambda data: (
+                    sorted(data["route_notes"])[0] if data["route_notes"] else "",
+                    data["product"].display_name,
+                ),
             ),
-            start=1,
+            start=start_sequence,
         ):
             product = requirement["product"]
             required_qty_per_unit = requirement["required_qty"]
             if required_qty_per_unit <= 0 and not self.include_zero_required:
                 continue
 
-            available_qty = available_qty_by_product.get(product.id, 0.0)
-            required_qty_for_target = required_qty_per_unit * self.target_qty
-            can_produce_qty = (
-                max(math.floor(available_qty / required_qty_per_unit), 0)
-                if required_qty_per_unit > 0
-                else 0
+            route_note = "\n".join(sorted(requirement["route_notes"]))
+            component_line = self._prepare_result_line_values(
+                sequence * 10,
+                requirement["level"],
+                requirement["parent_bom"],
+                product,
+                required_qty_per_unit,
+                route_note,
+                "component",
+                available_qty_by_product,
+                location_note_by_product,
             )
-            shortage_qty = max(required_qty_for_target - available_qty, 0.0)
-            if available_qty <= 0:
-                availability_state = "zero"
-            elif shortage_qty > 0:
-                availability_state = "shortage"
-            else:
-                availability_state = "ok"
+            prepared_lines.append(component_line)
+            component_lines.append(component_line)
 
-            route_notes = sorted(requirement["route_notes"])
-            if len(route_notes) > 1:
-                route_note = _("Multiple BoM paths")
-            else:
-                route_note = route_notes[0] if route_notes else False
-
-            prepared_lines.append(
-                {
-                    "sequence": sequence * 10,
-                    "level": requirement["level"],
-                    "parent_bom_id": requirement["parent_bom"].id
-                    if requirement["parent_bom"]
-                    else False,
-                    "product_id": product.id,
-                    "product_uom_id": product.uom_id.id,
-                    "required_qty_per_unit": required_qty_per_unit,
-                    "required_qty_for_target": required_qty_for_target,
-                    "available_qty": available_qty,
-                    "can_produce_qty": can_produce_qty,
-                    "shortage_qty": shortage_qty,
-                    "availability_state": availability_state,
-                    "available_location_note": location_note_by_product.get(
-                        product.id, ""
-                    ),
-                    "route_note": route_note,
-                }
-            )
-
-        if not prepared_lines:
+        if not component_lines:
             return [], {
                 "can_produce_qty": 0.0,
                 "bottleneck_product_id": False,
@@ -433,12 +450,23 @@ class MrpBomAvailabilityWizard(models.TransientModel):
                 "summary": _("No BoM components found."),
             }
 
-        overall_can_produce = min(line["can_produce_qty"] for line in prepared_lines)
-        for line in prepared_lines:
+        prepared_lines.sort(
+            key=lambda line: (
+                line["route_note"] or "",
+                0 if line["line_type"] == "subassembly" else 1,
+                line["product_id"],
+            )
+        )
+        for sequence, line in enumerate(prepared_lines, start=1):
+            line["sequence"] = sequence * 10
+
+        overall_can_produce = min(line["can_produce_qty"] for line in component_lines)
+        for line in component_lines:
             line["is_bottleneck"] = line["can_produce_qty"] == overall_can_produce
+            line["bottleneck_note"] = _("Bottleneck") if line["is_bottleneck"] else ""
 
         bottleneck_line = sorted(
-            (line for line in prepared_lines if line["is_bottleneck"]),
+            (line for line in component_lines if line["is_bottleneck"]),
             key=lambda line: (
                 line["can_produce_qty"],
                 -line["shortage_qty"],
@@ -448,15 +476,13 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         bottleneck_product = self.env["product.product"].browse(
             bottleneck_line["product_id"]
         )
-        shortage_count = sum(1 for line in prepared_lines if line["shortage_qty"] > 0)
+        shortage_count = sum(1 for line in component_lines if line["shortage_qty"] > 0)
         zero_count = sum(
-            1 for line in prepared_lines if line["availability_state"] == "zero"
+            1 for line in component_lines if line["availability_state"] == "zero"
         )
         summary = _(
-            "Can produce now: %(qty)s unit(s).\n"
-            "Availability calculated across %(location_count)s selected location(s).\n"
-            "Main bottleneck: %(product)s.\n"
-            "%(shortage_count)s component(s) short for target, %(zero_count)s with zero availability."
+            "%(qty)s unit(s) from %(location_count)s location(s). "
+            "Bottleneck: %(product)s. Shortages: %(shortage_count)s; zero stock: %(zero_count)s."
         ) % {
             "qty": overall_can_produce,
             "location_count": len(self.location_ids),
@@ -472,6 +498,50 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             "summary": summary,
         }
 
+    def _prepare_result_line_values(
+        self,
+        sequence,
+        level,
+        parent_bom,
+        product,
+        required_qty_per_unit,
+        route_note,
+        line_type,
+        available_qty_by_product,
+        location_note_by_product,
+    ):
+        available_qty = available_qty_by_product.get(product.id, 0.0)
+        required_qty_for_target = required_qty_per_unit * self.target_qty
+        can_produce_qty = (
+            max(math.floor(available_qty / required_qty_per_unit), 0)
+            if required_qty_per_unit > 0
+            else 0
+        )
+        shortage_qty = max(required_qty_for_target - available_qty, 0.0)
+        if available_qty <= 0:
+            availability_state = "zero"
+        elif shortage_qty > 0:
+            availability_state = "shortage"
+        else:
+            availability_state = "ok"
+
+        return {
+            "sequence": sequence,
+            "line_type": line_type,
+            "level": level,
+            "parent_bom_id": parent_bom.id if parent_bom else False,
+            "product_id": product.id,
+            "product_uom_id": product.uom_id.id,
+            "required_qty_per_unit": required_qty_per_unit,
+            "required_qty_for_target": required_qty_for_target,
+            "available_qty": available_qty,
+            "can_produce_qty": can_produce_qty,
+            "shortage_qty": shortage_qty,
+            "availability_state": availability_state,
+            "available_location_note": location_note_by_product.get(product.id, ""),
+            "route_note": route_note,
+        }
+
 
 class MrpBomAvailabilityWizardLine(models.TransientModel):
     _name = "mrp.bom.availability.wizard.line"
@@ -484,6 +554,15 @@ class MrpBomAvailabilityWizardLine(models.TransientModel):
         ondelete="cascade",
     )
     sequence = fields.Integer(default=10)
+    line_type = fields.Selection(
+        selection=[
+            ("component", "Component"),
+            ("subassembly", "Subassembly"),
+        ],
+        string="Type",
+        default="component",
+        readonly=True,
+    )
     level = fields.Integer(
         string="BoM Level",
     )
@@ -524,6 +603,10 @@ class MrpBomAvailabilityWizardLine(models.TransientModel):
     is_bottleneck = fields.Boolean(
         string="Bottleneck",
     )
+    bottleneck_note = fields.Char(
+        string="Bottleneck",
+        readonly=True,
+    )
     availability_state = fields.Selection(
         selection=[
             ("ok", "Enough"),
@@ -537,6 +620,6 @@ class MrpBomAvailabilityWizardLine(models.TransientModel):
         readonly=True,
         help="Human-readable summary of where available stock was found.",
     )
-    route_note = fields.Char(
-        string="BoM Path / Note",
+    route_note = fields.Text(
+        string="BoM Path",
     )

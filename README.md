@@ -13,6 +13,7 @@ materials.
 - Read stock from selected internal stock locations.
 - Support On Hand and Available / Unreserved availability basis.
 - Explode multi-level BoMs.
+- Show exploded subassembly context lines and full BoM paths.
 - Filter variant-specific BoM lines using Apply on Variants.
 - Aggregate repeated components in the exploded BoM.
 - Normalize component quantities to the product default unit of measure.
