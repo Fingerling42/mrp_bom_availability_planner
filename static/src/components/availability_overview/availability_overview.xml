@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="mrp_bom_availability_planner.BomAvailabilityOverview">
+        <div class="o_bap_overview o_action">
+            <div class="o_control_panel d-flex align-items-center justify-content-between border-bottom px-3 py-2">
+                <div>
+                    <ol class="breadcrumb mb-0">
+                        <li class="breadcrumb-item active">
+                            <t t-esc="title"/>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+            <div class="o_bap_overview_content p-3">
+                <t t-if="state.isLoading">
+                    <div class="text-muted" t-esc="loadingLabel"/>
+                </t>
+                <t t-else="">
+                    <div class="o_bap_empty border rounded bg-view p-4">
+                        <div class="fw-semibold" t-esc="state.setupData.empty_message"/>
+                    </div>
+                </t>
+            </div>
+        </div>
+    </t>
+</templates>

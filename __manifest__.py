@@ -5,12 +5,19 @@
     "category": "Manufacturing/Manufacturing",
     "author": "Pinout LTD",
     "license": "Other OSI approved licence",
-    "depends": ["mrp", "stock"],
+    "depends": ["mrp", "stock", "web"],
     "data": [
         "security/ir.model.access.csv",
         "data/cleanup_obsolete_records.xml",
         "views/mrp_bom_availability_wizard_views.xml",
     ],
+    "assets": {
+        "web.assets_backend": [
+            "mrp_bom_availability_planner/static/src/components/availability_overview/availability_overview.js",
+            "mrp_bom_availability_planner/static/src/components/availability_overview/availability_overview.xml",
+            "mrp_bom_availability_planner/static/src/components/availability_overview/availability_overview.scss",
+        ],
+    },
     "installable": True,
     "application": False,
 }

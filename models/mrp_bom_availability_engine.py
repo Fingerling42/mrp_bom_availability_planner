@@ -93,6 +93,25 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             ),
         }
 
+    def get_client_action_data(self):
+        default_locations = self.env["stock.location"].search(
+            [
+                ("usage", "=", "internal"),
+                ("company_id", "in", [False, self.env.company.id]),
+            ],
+            limit=1,
+        )
+        return {
+            "title": _("BoM Availability Planner"),
+            "empty_message": _("No availability data yet."),
+            "availability_basis_options": [
+                {"value": "on_hand", "label": _("On Hand")},
+                {"value": "available", "label": _("Available / Unreserved")},
+            ],
+            "default_location_ids": default_locations.ids,
+            "default_location_names": default_locations.mapped("display_name"),
+        }
+
     def _validate_availability_inputs(
         self,
         product,
@@ -391,9 +410,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         required_qty = requirement["required_qty"]
         available_qty = available_qty_by_product.get(product.id, 0.0)
         can_produce_qty = (
-            max(math.floor(available_qty / required_qty), 0)
-            if required_qty > 0
-            else 0
+            max(math.floor(available_qty / required_qty), 0) if required_qty > 0 else 0
         )
         if can_produce_qty == overall_can_produce_qty:
             status = _("Bottleneck")
