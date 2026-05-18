@@ -264,8 +264,10 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         except TypeError:
             pass
 
+        company_domain = [("company_id", "in", [False, self.env.company.id])]
         exact_bom = bom_model.search(
             [
+                *company_domain,
                 ("product_id", "=", product.id),
                 ("type", "in", ["normal", "phantom"]),
             ],
@@ -277,6 +279,7 @@ class MrpBomAvailabilityWizard(models.TransientModel):
 
         return bom_model.search(
             [
+                *company_domain,
                 ("product_id", "=", False),
                 ("product_tmpl_id", "=", product.product_tmpl_id.id),
                 ("type", "in", ["normal", "phantom"]),
