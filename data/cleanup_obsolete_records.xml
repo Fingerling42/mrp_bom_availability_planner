@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <delete model="ir.model.access" search="[('model_id.model', '=', 'mrp.bom.availability.wizard.line')]"/>
+</odoo>

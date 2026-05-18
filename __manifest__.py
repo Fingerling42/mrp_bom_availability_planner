@@ -8,6 +8,7 @@
     "depends": ["mrp", "stock"],
     "data": [
         "security/ir.model.access.csv",
+        "data/cleanup_obsolete_records.xml",
         "views/mrp_bom_availability_wizard_views.xml",
     ],
     "installable": True,

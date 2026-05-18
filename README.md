@@ -36,12 +36,9 @@ Select a product variant, bill of materials, stock locations, and availability
 basis. Use Compute Availability to calculate component requirements, available
 quantities, producible quantity, and bottlenecks.
 
-Enable Explode Subassemblies to calculate raw component requirements from
-multi-level BoMs. In the MVP, existing subassembly stock is not consumed first;
-the planner fully explodes subassembly BoMs.
-
-The overview shows subassemblies as expandable structure rows. Availability and
-bottleneck metrics are shown for leaf components.
+The overview shows multi-level BoMs as expandable structure rows. Availability
+and bottleneck metrics are calculated for leaf components; existing subassembly
+stock is not consumed first.
 
 The module only reads current stock.quant quantities. It does not consider
 forecasted receipts, planned purchases, reservations, lots, serial numbers,

@@ -17,6 +17,12 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         string="Product Variant",
         domain="[('type', 'in', ['product', 'consu'])]",
     )
+    company_id = fields.Many2one(
+        "res.company",
+        default=lambda self: self.env.company,
+        required=True,
+        readonly=True,
+    )
     bom_id = fields.Many2one(
         "mrp.bom",
         string="Bill of Materials",
@@ -28,11 +34,6 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         domain="[('usage', '=', 'internal')]",
         default=lambda self: self._default_location_ids(),
         help="Internal stock locations used to calculate available component quantities.",
-    )
-    target_qty = fields.Float(
-        string="Target Quantity",
-        default=1.0,
-        required=True,
     )
     product_uom_id = fields.Many2one(
         related="product_id.uom_id",
@@ -52,20 +53,6 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         string="Availability Basis",
         default="on_hand",
         required=True,
-    )
-    explode_subassemblies = fields.Boolean(
-        string="Explode Subassemblies",
-        default=True,
-    )
-    include_zero_required = fields.Boolean(
-        string="Show Zero Required Lines",
-        default=False,
-    )
-    line_ids = fields.One2many(
-        "mrp.bom.availability.wizard.line",
-        "wizard_id",
-        string="Availability Lines",
-        readonly=True,
     )
     can_produce_qty = fields.Float(
         string="Can Produce Now",
@@ -92,7 +79,13 @@ class MrpBomAvailabilityWizard(models.TransientModel):
 
     @api.model
     def _default_location_ids(self):
-        return self.env["stock.location"].search([("usage", "=", "internal")], limit=1)
+        return self.env["stock.location"].search(
+            [
+                ("usage", "=", "internal"),
+                ("company_id", "in", [False, self.env.company.id]),
+            ],
+            limit=1,
+        )
 
     @api.model
     def action_open_planner(self):
@@ -103,7 +96,6 @@ class MrpBomAvailabilityWizard(models.TransientModel):
     def _onchange_product_id(self):
         engine = self.env["mrp.bom.availability.engine"]
         for wizard in self:
-            wizard.line_ids = [(5, 0, 0)]
             wizard.update(wizard._reset_result_values())
             wizard.bom_id = (
                 engine.get_matching_bom(wizard.product_id)
@@ -111,9 +103,8 @@ class MrpBomAvailabilityWizard(models.TransientModel):
                 else False
             )
 
-    def action_clear_lines(self):
+    def action_clear_result(self):
         self.ensure_one()
-        self.line_ids.unlink()
         self.write(self._reset_result_values())
         return self._reopen_wizard()
 
@@ -121,18 +112,10 @@ class MrpBomAvailabilityWizard(models.TransientModel):
         self.ensure_one()
         self._validate_compute_inputs()
 
-        self.line_ids.unlink()
         # Keep the wizard as a UI coordinator; the engine owns all explosion and
         # stock availability rules.
-        line_commands, summary_values = self.env["mrp.bom.availability.engine"].compute(
-            self
-        )
-        self.write(
-            {
-                "line_ids": line_commands,
-                **summary_values,
-            }
-        )
+        summary_values = self.env["mrp.bom.availability.engine"].compute(self)
+        self.write(summary_values)
         return self._reopen_wizard()
 
     def _validate_compute_inputs(self):
@@ -143,6 +126,18 @@ class MrpBomAvailabilityWizard(models.TransientModel):
             raise UserError(_("Select a Bill of Materials."))
         if not self.location_ids:
             raise UserError(_("Select at least one Location."))
+        if self.bom_id.type not in ("normal", "phantom"):
+            raise UserError(_("Select a manufacturing or kit Bill of Materials."))
+        if self.bom_id.company_id and self.bom_id.company_id != self.company_id:
+            raise UserError(_("Select a Bill of Materials from the current company."))
+        if any(
+            location.company_id and location.company_id != self.company_id
+            for location in self.location_ids
+        ):
+            raise UserError(_("Select only locations from the current company."))
+        engine = self.env["mrp.bom.availability.engine"]
+        if not engine._is_bom_applicable_to_product(self.bom_id, self.product_id):
+            raise UserError(_("Selected Bill of Materials does not match the product."))
 
     def _reset_result_values(self):
         return {

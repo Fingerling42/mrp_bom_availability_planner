@@ -7,23 +7,21 @@
             <form string="BoM Availability Planner" create="false" delete="false">
                 <header>
                     <button name="action_compute_availability" string="Compute Availability" type="object" class="btn-primary"/>
-                    <button name="action_clear_lines" string="Clear Lines" type="object"/>
+                    <button name="action_clear_result" string="Clear Result" type="object"/>
                 </header>
                 <sheet>
                     <group>
                         <group>
                             <field name="name" invisible="1"/>
+                            <field name="company_id" invisible="1"/>
                             <field name="product_id" required="1"/>
                             <field name="product_tmpl_id" invisible="1"/>
-                            <field name="bom_id" required="1" domain="[('type', 'in', ['normal', 'phantom']), '|', ('product_id', '=', product_id), '&amp;', ('product_id', '=', False), ('product_tmpl_id', '=', product_tmpl_id)]"/>
-                            <field name="location_ids" widget="many2many_tags" required="1"/>
+                            <field name="bom_id" required="1" domain="[('type', 'in', ['normal', 'phantom']), '|', ('company_id', '=', False), ('company_id', '=', company_id), '|', ('product_id', '=', product_id), '&amp;', ('product_id', '=', False), ('product_tmpl_id', '=', product_tmpl_id)]"/>
+                            <field name="location_ids" widget="many2many_tags" required="1" domain="[('usage', '=', 'internal'), '|', ('company_id', '=', False), ('company_id', '=', company_id)]"/>
                         </group>
                         <group>
                             <field name="product_uom_id"/>
                             <field name="availability_basis" widget="radio"/>
-                            <field name="target_qty" invisible="1"/>
-                            <field name="explode_subassemblies" invisible="1"/>
-                            <field name="include_zero_required" invisible="1"/>
                         </group>
                     </group>
                     <group string="Summary" col="4">
