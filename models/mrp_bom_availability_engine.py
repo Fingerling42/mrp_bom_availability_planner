@@ -1,6 +1,6 @@
 import math
 
-from odoo import _, models
+from odoo import _, api, models
 from odoo.exceptions import UserError
 
 
@@ -12,6 +12,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
     _name = "mrp.bom.availability.engine"
     _description = "BoM Availability Planner Engine"
 
+    @api.model
     def get_availability_data(
         self,
         product_id,
@@ -85,6 +86,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             ),
         }
 
+    @api.model
     def get_client_action_data(self):
         default_locations = self.env["stock.location"].search(
             [
@@ -105,6 +107,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             "default_location_names": default_locations.mapped("display_name"),
         }
 
+    @api.model
     def get_matching_bom_data(self, product_id):
         product = self.env["product.product"].browse(product_id).exists()
         bom = self.get_matching_bom(product) if product else self.env["mrp.bom"]
