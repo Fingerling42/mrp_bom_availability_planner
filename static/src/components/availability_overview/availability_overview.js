@@ -143,11 +143,15 @@ export class BomAvailabilityOverview extends Component {
       this.state.bom = null;
       return;
     }
+    const productId = this.state.product.id;
     const bom = await this.orm.call(
       "mrp.bom.availability.engine",
       "get_matching_bom_data",
-      [this.state.product.id],
+      [productId],
     );
+    if (!this.state.product || this.state.product.id !== productId) {
+      return;
+    }
     this.state.bom = bom || null;
   }
 
@@ -195,17 +199,20 @@ export class BomAvailabilityOverview extends Component {
       return;
     }
     this.state.isComputing = true;
-    this.state.result = await this.orm.call(
-      "mrp.bom.availability.engine",
-      "get_availability_data",
-      [
-        this.state.product.id,
-        this.state.bom.id,
-        this.state.locations.map((location) => location.id),
-        this.state.availabilityBasis,
-      ],
-    );
-    this.state.isComputing = false;
+    try {
+      this.state.result = await this.orm.call(
+        "mrp.bom.availability.engine",
+        "get_availability_data",
+        [
+          this.state.product.id,
+          this.state.bom.id,
+          this.state.locations.map((location) => location.id),
+          this.state.availabilityBasis,
+        ],
+      );
+    } finally {
+      this.state.isComputing = false;
+    }
   }
 
   clearResult() {

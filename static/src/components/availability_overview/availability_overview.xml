@@ -118,7 +118,7 @@
                             <div class="col-12 col-md-4">
                                 <div class="o_bap_metric">
                                     <div class="text-muted" t-esc="mainBottleneckLabel"/>
-                                    <div class="fs-5" t-esc="state.result.summary"/>
+                                    <div class="fs-5" t-esc="state.result.bottleneck_product_display_name"/>
                                 </div>
                             </div>
                             <div class="col-12 col-md-4">

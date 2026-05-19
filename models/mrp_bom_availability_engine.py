@@ -67,6 +67,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         return {
             "can_produce_qty": can_produce_qty,
             "bottleneck_product_id": bottleneck_product.id,
+            "bottleneck_product_display_name": bottleneck_product.display_name,
             "bottleneck_qty": bottleneck_available,
             "summary": _(
                 "%(qty)s unit(s) can be produced from selected locations. "
@@ -304,6 +305,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             [
                 ("product_id", "in", products.ids),
                 ("location_id", "in", locations.ids),
+                ("company_id", "in", [False, self.env.company.id]),
             ],
             ["product_id", "quantity", "reserved_quantity"],
             ["product_id"],
@@ -462,6 +464,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         return {
             "can_produce_qty": 0.0,
             "bottleneck_product_id": False,
+            "bottleneck_product_display_name": False,
             "bottleneck_qty": 0.0,
             "summary": summary,
             "availability_overview_data": False,
