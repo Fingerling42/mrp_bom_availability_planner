@@ -12,7 +12,7 @@ materials.
 - Read stock from selected internal stock locations.
 - Support On Hand and Available / Unreserved availability basis.
 - Explode multi-level BoMs.
-- Keep subassembly context without counting subassembly stock as a bottleneck.
+- Keep subassembly context and account for available finished subassembly stock.
 - Filter variant-specific BoM lines using Apply on Variants.
 - Aggregate repeated components in the exploded BoM.
 - Normalize component quantities to the product default unit of measure.
@@ -37,8 +37,9 @@ basis. Use Compute Availability to calculate component requirements, available
 quantities, producible quantity, and bottlenecks.
 
 The backend prepares multi-level BoM availability data for an overview UI.
-Availability and bottleneck metrics are calculated for leaf components; existing
-subassembly stock is not consumed first.
+Availability and bottleneck metrics account for leaf components and available
+finished subassembly stock. When a selected location is used, stock in its child
+locations is included as well.
 
 The module only reads current stock.quant quantities. It does not consider
 forecasted receipts, planned purchases, reservations, lots, serial numbers,

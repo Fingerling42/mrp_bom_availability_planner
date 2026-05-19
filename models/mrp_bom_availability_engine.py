@@ -38,6 +38,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         self._validate_availability_inputs(product, bom, locations, availability_basis)
 
         aggregated_requirements = {}
+        aggregated_subassemblies = {}
         overview_nodes = []
         self._explode_bom(
             bom,
@@ -45,6 +46,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             factor=1.0,
             overview_nodes=overview_nodes,
             aggregated=aggregated_requirements,
+            aggregated_subassemblies=aggregated_subassemblies,
             visited_bom_ids=set(),
         )
 
@@ -66,6 +68,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         self._compute_overview_capacities(
             overview_nodes,
             aggregated_requirements,
+            aggregated_subassemblies,
             available_qty_by_product,
         )
         can_produce_qty = self._get_root_capacity(overview_nodes)
@@ -76,6 +79,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             product,
             overview_nodes,
             aggregated_requirements,
+            aggregated_subassemblies,
             available_qty_by_product,
             can_produce_qty,
         )
@@ -198,6 +202,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         factor,
         overview_nodes,
         aggregated,
+        aggregated_subassemblies,
         visited_bom_ids,
     ):
         if not bom or not product:
@@ -229,6 +234,16 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
 
             if child_bom:
                 child_nodes = []
+                requirement = aggregated_subassemblies.setdefault(
+                    component.id,
+                    {
+                        "product": component,
+                        "required_qty": 0.0,
+                        "occurrence_count": 0,
+                    },
+                )
+                requirement["required_qty"] += required_qty
+                requirement["occurrence_count"] += 1
                 overview_nodes.append(
                     {
                         "line_type": LINE_TYPE_SUBASSEMBLY,
@@ -243,6 +258,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
                     factor=required_qty,
                     overview_nodes=child_nodes,
                     aggregated=aggregated,
+                    aggregated_subassemblies=aggregated_subassemblies,
                     visited_bom_ids=set(visited_bom_ids),
                 )
                 continue
@@ -317,7 +333,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         groups = self.env["stock.quant"].read_group(
             [
                 ("product_id", "in", products.ids),
-                ("location_id", "in", locations.ids),
+                ("location_id", "child_of", locations.ids),
                 ("company_id", "in", [False, self.env.company.id]),
             ],
             ["product_id", "quantity", "reserved_quantity"],
@@ -341,26 +357,35 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         self,
         nodes,
         aggregated_requirements,
+        aggregated_subassemblies,
         available_qty_by_product,
     ):
         for node in nodes:
             product = node["product"]
-            required_qty = node["required_qty"]
             available_qty = available_qty_by_product.get(product.id, 0.0)
             node["available_qty"] = available_qty
             if node["line_type"] == LINE_TYPE_SUBASSEMBLY:
                 self._compute_overview_capacities(
                     node["children"],
                     aggregated_requirements,
+                    aggregated_subassemblies,
                     available_qty_by_product,
                 )
                 production_capacity = self._get_root_capacity(node["children"])
-                stock_capacity = self._capacity_from_qty(available_qty, required_qty)
+                total_required_qty = aggregated_subassemblies[product.id][
+                    "required_qty"
+                ]
+                stock_capacity = self._capacity_from_qty(
+                    available_qty,
+                    total_required_qty,
+                )
                 # A subassembly can satisfy demand either from finished stock or
-                # by producing more units from its own BoM.
+                # by producing more units from its own BoM. The finished stock
+                # capacity is based on total demand across the tree, so repeated
+                # subassemblies share the same stock instead of double-counting it.
                 node["stock_capacity_qty"] = stock_capacity
                 node["production_capacity_qty"] = production_capacity
-                node["capacity_qty"] = max(stock_capacity, production_capacity)
+                node["capacity_qty"] = stock_capacity + production_capacity
                 continue
 
             total_required_qty = aggregated_requirements[product.id]["required_qty"]
@@ -388,7 +413,8 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
                 production_capacity = node.get("production_capacity_qty", 0)
                 stock_capacity = node.get("stock_capacity_qty", 0)
                 if (
-                    production_capacity == target_capacity
+                    node["children"]
+                    and production_capacity == target_capacity
                     and production_capacity >= stock_capacity
                 ):
                     return self._find_bottleneck_node(node["children"], target_capacity)
@@ -400,6 +426,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         product,
         overview_nodes,
         aggregated_requirements,
+        aggregated_subassemblies,
         available_qty_by_product,
         overall_can_produce_qty,
     ):
@@ -407,15 +434,19 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             return self._empty_overview_data(_("No BoM components found."))
 
         seen_component_ids = set()
+        seen_subassembly_ids = set()
         children = [
             self._prepare_overview_node(
                 node,
                 aggregated_requirements,
+                aggregated_subassemblies,
                 available_qty_by_product,
                 overall_can_produce_qty,
                 seen_component_ids=seen_component_ids,
+                seen_subassembly_ids=seen_subassembly_ids,
                 line_path="0.%s" % index,
                 level=1,
+                covered_by_stock=False,
             )
             for index, node in enumerate(overview_nodes, start=1)
         ]
@@ -448,34 +479,48 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         self,
         node,
         aggregated_requirements,
+        aggregated_subassemblies,
         available_qty_by_product,
         overall_can_produce_qty,
         seen_component_ids,
+        seen_subassembly_ids,
         line_path,
         level,
+        covered_by_stock,
     ):
         product = node["product"]
         if node["line_type"] == LINE_TYPE_SUBASSEMBLY:
+            capacity_qty = node["capacity_qty"]
+            stock_capacity = node.get("stock_capacity_qty", 0)
+            stock_covers_current_need = (
+                stock_capacity > 0 and stock_capacity >= overall_can_produce_qty
+            )
             children = [
                 self._prepare_overview_node(
                     child,
                     aggregated_requirements,
+                    aggregated_subassemblies,
                     available_qty_by_product,
                     overall_can_produce_qty,
                     seen_component_ids,
+                    seen_subassembly_ids,
                     line_path="%s.%s" % (line_path, child_index),
                     level=level + 1,
+                    covered_by_stock=covered_by_stock or stock_covers_current_need,
                 )
                 for child_index, child in enumerate(node["children"], start=1)
             ]
-            capacity_qty = node["capacity_qty"]
-            stock_capacity = node.get("stock_capacity_qty", 0)
-            production_capacity = node.get("production_capacity_qty", 0)
-            if (
-                stock_capacity > 0
-                and stock_capacity >= overall_can_produce_qty
-                and stock_capacity >= production_capacity
-            ):
+            requirement = aggregated_subassemblies[product.id]
+            is_shared_subassembly = requirement["occurrence_count"] > 1
+            is_first_occurrence = product.id not in seen_subassembly_ids
+            seen_subassembly_ids.add(product.id)
+            if covered_by_stock:
+                status_code = "covered_by_stock"
+                status = _("Covered by Stock")
+            elif is_shared_subassembly and not is_first_occurrence:
+                status_code = "shared_stock"
+                status = _("Shared Stock")
+            elif stock_covers_current_need:
                 status_code = "available_stock"
                 status = _("Available Stock")
             elif capacity_qty == overall_can_produce_qty:
@@ -489,7 +534,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
                 "line_id": line_path,
                 "level": level,
                 "line_type": LINE_TYPE_SUBASSEMBLY,
-                "available_qty": node["available_qty"],
+                "available_qty": node["available_qty"] if is_first_occurrence else None,
                 "can_produce_qty": capacity_qty,
                 "capacity_qty": capacity_qty,
                 "status": status_code,
@@ -498,14 +543,16 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             }
 
         requirement = aggregated_requirements[product.id]
-        required_qty = requirement["required_qty"]
         available_qty = available_qty_by_product.get(product.id, 0.0)
         occurrence_count = requirement["occurrence_count"]
         is_shared_component = occurrence_count > 1
         is_first_occurrence = product.id not in seen_component_ids
         seen_component_ids.add(product.id)
         can_produce_qty = node["capacity_qty"]
-        if is_shared_component and not is_first_occurrence:
+        if covered_by_stock:
+            status = _("Covered by Stock")
+            status_code = "covered_by_stock"
+        elif is_shared_component and not is_first_occurrence:
             status = _("Shared Stock")
             status_code = "shared_stock"
         elif can_produce_qty == overall_can_produce_qty:
