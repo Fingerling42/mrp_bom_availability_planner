@@ -12,15 +12,6 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
     _name = "mrp.bom.availability.engine"
     _description = "BoM Availability Planner Engine"
 
-    def compute(self, wizard):
-        wizard.ensure_one()
-        return self.get_availability_data(
-            wizard.product_id.id,
-            wizard.bom_id.id,
-            wizard.location_ids.ids,
-            wizard.availability_basis,
-        )
-
     def get_availability_data(
         self,
         product_id,

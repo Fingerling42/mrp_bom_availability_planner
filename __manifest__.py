@@ -7,9 +7,7 @@
     "license": "Other OSI approved licence",
     "depends": ["mrp", "stock", "web"],
     "data": [
-        "security/ir.model.access.csv",
-        "data/cleanup_obsolete_records.xml",
-        "views/mrp_bom_availability_wizard_views.xml",
+        "views/mrp_bom_availability_overview_views.xml",
     ],
     "assets": {
         "web.assets_backend": [

@@ -30,7 +30,7 @@ MRP BoM Availability Planner.
 ## Usage
 
 Use Manufacturing -> Reporting -> BoM Availability Planner to open the
-availability wizard.
+availability overview.
 
 Select a product variant, bill of materials, stock locations, and availability
 basis. Use Compute Availability to calculate component requirements, available
