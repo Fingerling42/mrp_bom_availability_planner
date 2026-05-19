@@ -2,9 +2,15 @@
 
 import { _t } from "@web/core/l10n/translation";
 import { formatFloat } from "@web/views/fields/formatters";
-import { Component } from "@odoo/owl";
+import { Component, useState } from "@odoo/owl";
 
 export class BomAvailabilityOverviewLine extends Component {
+  setup() {
+    this.state = useState({
+      isFolded: false,
+    });
+  }
+
   get line() {
     return this.props.line;
   }
@@ -34,11 +40,11 @@ export class BomAvailabilityOverviewLine extends Component {
   }
 
   get isFolded() {
-    return this.props.isFoldedLine(this.line);
+    return this.state.isFolded;
   }
 
   onToggle() {
-    this.props.toggleLine(this.line);
+    this.state.isFolded = !this.state.isFolded;
   }
 
   formatQty(value, precision = 4) {
@@ -57,6 +63,4 @@ BomAvailabilityOverviewLine.template =
 BomAvailabilityOverviewLine.components = { BomAvailabilityOverviewLine };
 BomAvailabilityOverviewLine.props = {
   line: Object,
-  isFoldedLine: Function,
-  toggleLine: Function,
 };

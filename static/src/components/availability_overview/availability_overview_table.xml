@@ -16,8 +16,6 @@
                     <t t-foreach="lines" t-as="line" t-key="line.line_id">
                         <BomAvailabilityOverviewLine
                             line="line"
-                            isFoldedLine.bind="isFolded"
-                            toggleLine.bind="toggleLine"
                         />
                     </t>
                 </tbody>

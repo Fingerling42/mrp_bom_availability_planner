@@ -36,8 +36,6 @@
             <t t-foreach="line.children" t-as="child" t-key="child.line_id">
                 <BomAvailabilityOverviewLine
                     line="child"
-                    isFoldedLine="props.isFoldedLine"
-                    toggleLine="props.toggleLine"
                 />
             </t>
         </t>
