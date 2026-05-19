@@ -14,7 +14,11 @@
     "assets": {
         "web.assets_backend": [
             "mrp_bom_availability_planner/static/src/components/availability_overview/availability_overview.js",
+            "mrp_bom_availability_planner/static/src/components/availability_overview/availability_overview_table.js",
+            "mrp_bom_availability_planner/static/src/components/availability_overview/availability_overview_line.js",
             "mrp_bom_availability_planner/static/src/components/availability_overview/availability_overview.xml",
+            "mrp_bom_availability_planner/static/src/components/availability_overview/availability_overview_table.xml",
+            "mrp_bom_availability_planner/static/src/components/availability_overview/availability_overview_line.xml",
             "mrp_bom_availability_planner/static/src/components/availability_overview/availability_overview.scss",
         ],
     },

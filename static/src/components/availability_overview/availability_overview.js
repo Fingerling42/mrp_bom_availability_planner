@@ -5,6 +5,7 @@ import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
 import { Many2XAutocomplete } from "@web/views/fields/relational_utils";
 import { Component, onWillStart, useState } from "@odoo/owl";
+import { BomAvailabilityOverviewTable } from "./availability_overview_table";
 
 export class BomAvailabilityOverview extends Component {
   setup() {
@@ -225,7 +226,10 @@ export class BomAvailabilityOverview extends Component {
 
 BomAvailabilityOverview.template =
   "mrp_bom_availability_planner.BomAvailabilityOverview";
-BomAvailabilityOverview.components = { Many2XAutocomplete };
+BomAvailabilityOverview.components = {
+  Many2XAutocomplete,
+  BomAvailabilityOverviewTable,
+};
 
 registry
   .category("actions")

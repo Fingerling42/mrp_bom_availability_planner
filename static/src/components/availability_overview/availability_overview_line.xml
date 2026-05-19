@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="mrp_bom_availability_planner.BomAvailabilityOverviewLine">
+        <tr t-att-class="rowClass">
+            <td>
+                <div class="o_bap_tree_product" t-att-style="indentStyle">
+                    <button
+                        t-if="hasChildren"
+                        class="btn btn-light o_bap_tree_toggle"
+                        type="button"
+                        t-att-title="toggleTitle"
+                        t-att-aria-label="toggleTitle"
+                        t-on-click="onToggle"
+                    >
+                        <i t-att-class="caretClass" role="img"/>
+                    </button>
+                    <span t-else="" class="o_bap_tree_toggle_spacer"/>
+                    <span class="text-truncate" t-esc="line.product_display_name"/>
+                </div>
+            </td>
+            <td class="text-end">
+                <t t-esc="formatQty(line.required_qty)"/>
+                <span class="text-muted ms-1" t-esc="line.uom_name"/>
+            </td>
+            <td class="text-end">
+                <t t-esc="formatQty(line.available_qty)"/>
+            </td>
+            <td class="text-end">
+                <t t-esc="formatInteger(line.can_produce_qty)"/>
+            </td>
+            <td class="text-end">
+                <span t-att-class="statusClass" t-esc="line.status_label"/>
+            </td>
+        </tr>
+        <t t-if="hasChildren and !isFolded">
+            <t t-foreach="line.children" t-as="child" t-key="child.line_id">
+                <BomAvailabilityOverviewLine
+                    line="child"
+                    isFoldedLine="props.isFoldedLine"
+                    toggleLine="props.toggleLine"
+                />
+            </t>
+        </t>
+    </t>
+</templates>

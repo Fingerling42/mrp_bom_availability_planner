@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="mrp_bom_availability_planner.BomAvailabilityOverviewTable">
+        <div class="o_bap_tree table-responsive">
+            <table class="table table-sm o_bap_tree_table">
+                <thead>
+                    <tr>
+                        <t t-foreach="columns" t-as="column" t-key="column.name">
+                            <th t-att-class="column.name !== 'component' ? 'text-end' : ''">
+                                <t t-esc="column.label"/>
+                            </th>
+                        </t>
+                    </tr>
+                </thead>
+                <tbody>
+                    <t t-foreach="lines" t-as="line" t-key="line.line_id">
+                        <BomAvailabilityOverviewLine
+                            line="line"
+                            isFoldedLine.bind="isFolded"
+                            toggleLine.bind="toggleLine"
+                        />
+                    </t>
+                </tbody>
+            </table>
+        </div>
+    </t>
+</templates>

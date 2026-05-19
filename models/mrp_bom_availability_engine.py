@@ -382,8 +382,10 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
                     aggregated_requirements,
                     available_qty_by_product,
                     overall_can_produce_qty,
+                    line_path=str(index),
+                    level=0,
                 )
-                for node in overview_nodes
+                for index, node in enumerate(overview_nodes, start=1)
             ],
         }
 
@@ -393,11 +395,15 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         aggregated_requirements,
         available_qty_by_product,
         overall_can_produce_qty,
+        line_path,
+        level,
     ):
         product = node["product"]
         if node["line_type"] == LINE_TYPE_SUBASSEMBLY:
             return {
                 **self._prepare_product_node(product, node["required_qty"]),
+                "line_id": line_path,
+                "level": level,
                 "line_type": LINE_TYPE_SUBASSEMBLY,
                 "status": "structure",
                 "status_label": _("Structure"),
@@ -407,8 +413,10 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
                         aggregated_requirements,
                         available_qty_by_product,
                         overall_can_produce_qty,
+                        line_path="%s.%s" % (line_path, child_index),
+                        level=level + 1,
                     )
-                    for child in node["children"]
+                    for child_index, child in enumerate(node["children"], start=1)
                 ],
             }
 
@@ -433,6 +441,8 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
 
         return {
             **self._prepare_product_node(product, node["required_qty"]),
+            "line_id": line_path,
+            "level": level,
             "line_type": LINE_TYPE_COMPONENT,
             "available_qty": available_qty,
             "can_produce_qty": can_produce_qty,
