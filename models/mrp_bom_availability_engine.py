@@ -79,6 +79,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
                 "product": bottleneck_product.display_name,
             },
             "availability_overview_data": self._prepare_overview_data(
+                product,
                 overview_nodes,
                 aggregated_requirements,
                 available_qty_by_product,
@@ -252,9 +253,11 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
                 {
                     "product": component,
                     "required_qty": 0.0,
+                    "occurrence_count": 0,
                 },
             )
             requirement["required_qty"] += required_qty
+            requirement["occurrence_count"] += 1
 
         visited_bom_ids.remove(bom.id)
 
@@ -356,6 +359,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
 
     def _prepare_overview_data(
         self,
+        product,
         overview_nodes,
         aggregated_requirements,
         available_qty_by_product,
@@ -364,24 +368,41 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         if not overview_nodes:
             return self._empty_overview_data(_("No BoM components found."))
 
+        seen_component_ids = set()
+        children = [
+            self._prepare_overview_node(
+                node,
+                aggregated_requirements,
+                available_qty_by_product,
+                overall_can_produce_qty,
+                seen_component_ids=seen_component_ids,
+                line_path="0.%s" % index,
+                level=1,
+            )
+            for index, node in enumerate(overview_nodes, start=1)
+        ]
+
         return {
             "columns": [
                 {"name": "component", "label": _("Component")},
                 {"name": "required_qty", "label": _("Required / Unit")},
                 {"name": "available_qty", "label": _("Available")},
-                {"name": "can_produce_qty", "label": _("Can Produce")},
+                {"name": "can_produce_qty", "label": _("Can Produce Finished")},
                 {"name": "status", "label": _("Status")},
             ],
             "lines": [
-                self._prepare_overview_node(
-                    node,
-                    aggregated_requirements,
-                    available_qty_by_product,
-                    overall_can_produce_qty,
-                    line_path=str(index),
-                    level=0,
-                )
-                for index, node in enumerate(overview_nodes, start=1)
+                {
+                    **self._prepare_product_node(product, 1.0),
+                    "line_id": "0",
+                    "level": 0,
+                    "line_type": "finished",
+                    "available_qty": None,
+                    "can_produce_qty": overall_can_produce_qty,
+                    "capacity_qty": overall_can_produce_qty,
+                    "status": "finished",
+                    "status_label": _("Finished Product"),
+                    "children": children,
+                }
             ],
         }
 
@@ -391,38 +412,58 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         aggregated_requirements,
         available_qty_by_product,
         overall_can_produce_qty,
+        seen_component_ids,
         line_path,
         level,
     ):
         product = node["product"]
         if node["line_type"] == LINE_TYPE_SUBASSEMBLY:
+            children = [
+                self._prepare_overview_node(
+                    child,
+                    aggregated_requirements,
+                    available_qty_by_product,
+                    overall_can_produce_qty,
+                    seen_component_ids,
+                    line_path="%s.%s" % (line_path, child_index),
+                    level=level + 1,
+                )
+                for child_index, child in enumerate(node["children"], start=1)
+            ]
+            capacity_qty = (
+                min(child["capacity_qty"] for child in children)
+                if children
+                else overall_can_produce_qty
+            )
+            status_code = "limited" if capacity_qty <= overall_can_produce_qty else "enough"
+            status = _("Limited") if status_code == "limited" else _("Enough")
             return {
                 **self._prepare_product_node(product, node["required_qty"]),
                 "line_id": line_path,
                 "level": level,
                 "line_type": LINE_TYPE_SUBASSEMBLY,
-                "status": "structure",
-                "status_label": _("Structure"),
-                "children": [
-                    self._prepare_overview_node(
-                        child,
-                        aggregated_requirements,
-                        available_qty_by_product,
-                        overall_can_produce_qty,
-                        line_path="%s.%s" % (line_path, child_index),
-                        level=level + 1,
-                    )
-                    for child_index, child in enumerate(node["children"], start=1)
-                ],
+                "available_qty": None,
+                "can_produce_qty": capacity_qty,
+                "capacity_qty": capacity_qty,
+                "status": status_code,
+                "status_label": status,
+                "children": children,
             }
 
         requirement = aggregated_requirements[product.id]
         required_qty = requirement["required_qty"]
         available_qty = available_qty_by_product.get(product.id, 0.0)
+        occurrence_count = requirement["occurrence_count"]
+        is_shared_component = occurrence_count > 1
+        is_first_occurrence = product.id not in seen_component_ids
+        seen_component_ids.add(product.id)
         can_produce_qty = (
             max(math.floor(available_qty / required_qty), 0) if required_qty > 0 else 0
         )
-        if can_produce_qty == overall_can_produce_qty:
+        if is_shared_component and not is_first_occurrence:
+            status = _("Shared Stock")
+            status_code = "shared_stock"
+        elif can_produce_qty == overall_can_produce_qty:
             status = _("Bottleneck")
             status_code = "bottleneck"
         elif available_qty <= 0:
@@ -440,8 +481,9 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             "line_id": line_path,
             "level": level,
             "line_type": LINE_TYPE_COMPONENT,
-            "available_qty": available_qty,
-            "can_produce_qty": can_produce_qty,
+            "available_qty": available_qty if is_first_occurrence else None,
+            "can_produce_qty": None,
+            "capacity_qty": can_produce_qty,
             "status": status_code,
             "status_label": status,
             "children": [],

@@ -72,8 +72,18 @@
   font-weight: 600;
 }
 
+.o_bap_tree_status_finished,
+.o_bap_tree_status_limited {
+  color: #5f6b7a;
+  font-weight: 600;
+}
+
 .o_bap_tree_status_enough {
   color: #287a3e;
+}
+
+.o_bap_tree_status_shared_stock {
+  color: #6b7280;
 }
 
 .o_bap_tree_status_zero_available,
