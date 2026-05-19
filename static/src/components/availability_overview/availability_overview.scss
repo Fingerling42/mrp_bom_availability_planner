@@ -1,10 +1,15 @@
 .o_bap_overview {
+  display: flex;
+  flex-direction: column;
   height: 100%;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .o_bap_overview_content {
-  max-width: 1280px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 .o_bap_location_tags .badge {
@@ -78,8 +83,13 @@
   font-weight: 600;
 }
 
+.o_bap_tree_status_available_stock,
 .o_bap_tree_status_enough {
   color: #287a3e;
+}
+
+.o_bap_tree_status_available_stock {
+  font-weight: 600;
 }
 
 .o_bap_tree_status_shared_stock {

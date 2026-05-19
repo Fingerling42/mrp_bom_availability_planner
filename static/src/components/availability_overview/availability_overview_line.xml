@@ -32,7 +32,7 @@
                 <span t-att-class="statusClass" t-esc="line.status_label"/>
             </td>
         </tr>
-        <t t-if="hasChildren and !isFolded">
+        <t t-if="hasChildren &amp;&amp; !isFolded">
             <t t-foreach="line.children" t-as="child" t-key="child.line_id">
                 <BomAvailabilityOverviewLine
                     line="child"

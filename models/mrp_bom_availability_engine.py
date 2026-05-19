@@ -55,14 +55,29 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
             )
             return values
 
-        products = self.env["product.product"].browse(list(aggregated_requirements))
+        product_ids = set(aggregated_requirements)
+        self._collect_overview_product_ids(overview_nodes, product_ids)
+        products = self.env["product.product"].browse(list(product_ids))
         available_qty_by_product = self._get_available_quantities(
             products,
             locations,
             availability_basis,
         )
-        bottleneck_product, bottleneck_available, can_produce_qty = (
-            self._get_bottleneck(aggregated_requirements, available_qty_by_product)
+        self._compute_overview_capacities(
+            overview_nodes,
+            aggregated_requirements,
+            available_qty_by_product,
+        )
+        can_produce_qty = self._get_root_capacity(overview_nodes)
+        bottleneck_node = self._find_bottleneck_node(overview_nodes, can_produce_qty)
+        bottleneck_product = bottleneck_node["product"]
+        bottleneck_available = bottleneck_node.get("available_qty", 0.0)
+        overview_data = self._prepare_overview_data(
+            product,
+            overview_nodes,
+            aggregated_requirements,
+            available_qty_by_product,
+            can_produce_qty,
         )
 
         return {
@@ -78,13 +93,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
                 "qty": can_produce_qty,
                 "product": bottleneck_product.display_name,
             },
-            "availability_overview_data": self._prepare_overview_data(
-                product,
-                overview_nodes,
-                aggregated_requirements,
-                available_qty_by_product,
-                can_produce_qty,
-            ),
+            "availability_overview_data": overview_data,
         }
 
     @api.model
@@ -218,8 +227,6 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
                 line_qty, component.uom_id
             )
 
-            # Subassembly rows are visual structure only. The bottleneck is
-            # calculated from leaf components, matching the fully exploded MVP.
             if child_bom:
                 child_nodes = []
                 overview_nodes.append(
@@ -325,37 +332,68 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
 
         return qty_by_product
 
-    def _get_bottleneck(self, aggregated_requirements, available_qty_by_product):
-        candidate_lines = []
-        for requirement in aggregated_requirements.values():
-            product = requirement["product"]
-            required_qty = requirement["required_qty"]
+    def _collect_overview_product_ids(self, nodes, product_ids):
+        for node in nodes:
+            product_ids.add(node["product"].id)
+            self._collect_overview_product_ids(node["children"], product_ids)
+
+    def _compute_overview_capacities(
+        self,
+        nodes,
+        aggregated_requirements,
+        available_qty_by_product,
+    ):
+        for node in nodes:
+            product = node["product"]
+            required_qty = node["required_qty"]
             available_qty = available_qty_by_product.get(product.id, 0.0)
-            can_produce_qty = (
-                max(math.floor(available_qty / required_qty), 0)
-                if required_qty > 0
-                else 0
-            )
-            candidate_lines.append(
-                {
-                    "product": product,
-                    "available_qty": available_qty,
-                    "can_produce_qty": can_produce_qty,
-                }
+            node["available_qty"] = available_qty
+            if node["line_type"] == LINE_TYPE_SUBASSEMBLY:
+                self._compute_overview_capacities(
+                    node["children"],
+                    aggregated_requirements,
+                    available_qty_by_product,
+                )
+                production_capacity = self._get_root_capacity(node["children"])
+                stock_capacity = self._capacity_from_qty(available_qty, required_qty)
+                # A subassembly can satisfy demand either from finished stock or
+                # by producing more units from its own BoM.
+                node["stock_capacity_qty"] = stock_capacity
+                node["production_capacity_qty"] = production_capacity
+                node["capacity_qty"] = max(stock_capacity, production_capacity)
+                continue
+
+            total_required_qty = aggregated_requirements[product.id]["required_qty"]
+            node["capacity_qty"] = self._capacity_from_qty(
+                available_qty,
+                total_required_qty,
             )
 
-        bottleneck = sorted(
-            candidate_lines,
-            key=lambda line: (
-                line["can_produce_qty"],
-                line["product"].display_name,
-            ),
-        )[0]
-        return (
-            bottleneck["product"],
-            bottleneck["available_qty"],
-            bottleneck["can_produce_qty"],
-        )
+    def _get_root_capacity(self, nodes):
+        if not nodes:
+            return 0
+        return min(node["capacity_qty"] for node in nodes)
+
+    def _capacity_from_qty(self, available_qty, required_qty):
+        if required_qty <= 0:
+            return 0
+        return max(math.floor(available_qty / required_qty), 0)
+
+    def _find_bottleneck_node(self, nodes, target_capacity):
+        candidates = sorted(nodes, key=lambda node: node["product"].display_name)
+        for node in candidates:
+            if node["capacity_qty"] != target_capacity:
+                continue
+            if node["line_type"] == LINE_TYPE_SUBASSEMBLY:
+                production_capacity = node.get("production_capacity_qty", 0)
+                stock_capacity = node.get("stock_capacity_qty", 0)
+                if (
+                    production_capacity == target_capacity
+                    and production_capacity >= stock_capacity
+                ):
+                    return self._find_bottleneck_node(node["children"], target_capacity)
+            return node
+        return candidates[0]
 
     def _prepare_overview_data(
         self,
@@ -430,19 +468,28 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
                 )
                 for child_index, child in enumerate(node["children"], start=1)
             ]
-            capacity_qty = (
-                min(child["capacity_qty"] for child in children)
-                if children
-                else overall_can_produce_qty
-            )
-            status_code = "limited" if capacity_qty <= overall_can_produce_qty else "enough"
-            status = _("Limited") if status_code == "limited" else _("Enough")
+            capacity_qty = node["capacity_qty"]
+            stock_capacity = node.get("stock_capacity_qty", 0)
+            production_capacity = node.get("production_capacity_qty", 0)
+            if (
+                stock_capacity > 0
+                and stock_capacity >= overall_can_produce_qty
+                and stock_capacity >= production_capacity
+            ):
+                status_code = "available_stock"
+                status = _("Available Stock")
+            elif capacity_qty == overall_can_produce_qty:
+                status_code = "limited"
+                status = _("Limited")
+            else:
+                status_code = "enough"
+                status = _("Enough")
             return {
                 **self._prepare_product_node(product, node["required_qty"]),
                 "line_id": line_path,
                 "level": level,
                 "line_type": LINE_TYPE_SUBASSEMBLY,
-                "available_qty": None,
+                "available_qty": node["available_qty"],
                 "can_produce_qty": capacity_qty,
                 "capacity_qty": capacity_qty,
                 "status": status_code,
@@ -457,9 +504,7 @@ class MrpBomAvailabilityEngine(models.AbstractModel):
         is_shared_component = occurrence_count > 1
         is_first_occurrence = product.id not in seen_component_ids
         seen_component_ids.add(product.id)
-        can_produce_qty = (
-            max(math.floor(available_qty / required_qty), 0) if required_qty > 0 else 0
-        )
+        can_produce_qty = node["capacity_qty"]
         if is_shared_component and not is_first_occurrence:
             status = _("Shared Stock")
             status_code = "shared_stock"

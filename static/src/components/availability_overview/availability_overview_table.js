@@ -23,7 +23,10 @@ export class BomAvailabilityOverviewTable extends Component {
   }
 
   toggleLine(line) {
-    this.state.folded[line.line_id] = !this.isFolded(line);
+    this.state.folded = {
+      ...this.state.folded,
+      [line.line_id]: !this.isFolded(line),
+    };
   }
 }
 
